@@ -1,0 +1,12 @@
+{
+  "network": "Whitechain Sepolia",
+  "chainId": 1874,
+  "explorer": "https://explorer.testnet.whitechain.io",
+  "usdt": "0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7",
+  "coordinator": "0xc86553A4fC45352Bd79F1A45a0c338E598B49888",
+  "guardian": "0xf4d6D323970cc80DC39461b29A272b34c4767cb9",
+  "challengeWindowSeconds": 120,
+  "silenceTimeoutSeconds": 900,
+  "auditAnchor": "0x1b2b623eca0a7899c6a24eaf401a99d2434fdb3d",
+  "vyomaEscrow": "0xbce841c78c6c40c551fc223ba9415d4751af5958"
+}
