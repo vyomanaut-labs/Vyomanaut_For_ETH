@@ -280,8 +280,8 @@ contract VyomaEscrow {
     ///         coordinator has been silent for `silenceTimeout`. Anyone may
     ///         call, so an owner does not need gas.
     function refund(address owner) external nonReentrant returns (uint256 amount) {
-        uint256 refundableAt = uint256(lastPostAt) + silenceTimeout;
-        if (block.timestamp < refundableAt) revert CoordinatorStillActive(refundableAt);
+        uint256 availableAt = uint256(lastPostAt) + silenceTimeout;
+        if (block.timestamp < availableAt) revert CoordinatorStillActive(availableAt);
         amount = credit[owner];
         if (amount == 0) revert NothingToRefund(owner);
         credit[owner] = 0;
