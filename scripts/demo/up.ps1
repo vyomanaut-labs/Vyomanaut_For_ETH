@@ -105,6 +105,18 @@ if ($LASTEXITCODE -ne 0) { throw "migrations/generator.go failed" }
 psql -v ON_ERROR_STOP=1 -h $PgHost -p $PgPort -U $PgMigratorUser -d $PgDatabase -f $DemoSql
 if ($LASTEXITCODE -ne 0) { throw "psql: schema apply failed" }
 
+Write-Log "applying numbered migrations after 001 (same rules as scripts/ci/apply_extra_migrations.sh)"
+$ExtraMigrations = Get-ChildItem -Path (Join-Path $RepoRoot "migrations") -File |
+    Where-Object { $_.Name -match '^\d{3}_.*\.sql$' -and $_.Name -notlike '001_*' } |
+    Sort-Object Name
+$DupNumbers = $ExtraMigrations | Group-Object { $_.Name.Substring(0, 3) } | Where-Object { $_.Count -gt 1 }
+if ($DupNumbers) { throw "migration number used twice: $($DupNumbers.Name -join ', ')" }
+foreach ($m in $ExtraMigrations) {
+    Write-Log "  applying $($m.Name)"
+    psql -v ON_ERROR_STOP=1 -h $PgHost -p $PgPort -U $PgMigratorUser -d $PgDatabase -f $m.FullName
+    if ($LASTEXITCODE -ne 0) { throw "psql: $($m.Name) failed" }
+}
+
 psql -v ON_ERROR_STOP=1 -h $PgHost -p $PgPort -U $PgMigratorUser -d $PgDatabase -c `
     "ALTER ROLE vyomanaut_app WITH PASSWORD '$PgAppPassword'; ALTER ROLE vyomanaut_gc WITH PASSWORD '$PgAppPassword';"
 if ($LASTEXITCODE -ne 0) { throw "psql: role passwords failed" }

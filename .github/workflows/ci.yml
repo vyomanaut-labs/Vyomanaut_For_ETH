@@ -234,6 +234,10 @@ jobs:
             psql -v ON_ERROR_STOP=1 -d vyomanaut_test \
               -f /tmp/001_demo.sql
 
+            # Numbered migrations after 001 (profile-invariant). No-op while
+            # none exist; fails loudly if two files share a number.
+            bash scripts/ci/apply_extra_migrations.sh
+
             psql -v ON_ERROR_STOP=1 -d vyomanaut_test -c \
               "ALTER ROLE vyomanaut_app WITH PASSWORD 'testpass';
               ALTER ROLE vyomanaut_gc  WITH PASSWORD 'testpass';"
@@ -249,6 +253,8 @@ jobs:
               -c "CREATE EXTENSION IF NOT EXISTS btree_gist;"
             psql -v ON_ERROR_STOP=1 -d vyomanaut_prod_smoketest \
               -f /tmp/001_prod.sql
+            PGDATABASE=vyomanaut_prod_smoketest \
+              bash scripts/ci/apply_extra_migrations.sh
 
       # ─────────────────────────────────────────────────────────────
       # check-04: Tests with race detector

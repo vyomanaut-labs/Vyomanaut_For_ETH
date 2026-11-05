@@ -32,3 +32,17 @@ coverage.txt
 demo_tests.txt
 .vyomanaut-bin
 vendor
+
+# Key material and chain tooling (public repo: nothing here is ever committed)
+*.key
+*.pem
+*.keystore
+*.priv
+keys/
+.keys/
+.secrets/
+secrets/
+.vyomanaut-keys/
+node_modules/
+contracts/out/
+contracts/cache/
