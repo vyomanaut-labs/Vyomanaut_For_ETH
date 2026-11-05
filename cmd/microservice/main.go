@@ -642,6 +642,13 @@ func runMicroservice(ctx context.Context, cfg startupConfig) (*app, error) {
 	// ──────────────────────────────────────────────────────────────────
 	go payment.RunChargeComputationLoop(ctx, db, profile)
 
+	// ── Step 24 (hackathon build — optional extensions) ──────────────────
+	// Every optional feature registers itself in its own file (see
+	// extensions.go); this is the only line main.go carries for all of them.
+	// Each extension is off unless its own VYOMANAUT_*_ENABLED switch is set,
+	// and a failing extension never stops the coordinator.
+	startExtensions(ctx, extensionDeps{DB: db, Profile: profile, SigningKey: jwtPriv})
+
 	return a, nil
 }
 

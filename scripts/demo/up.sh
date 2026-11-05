@@ -148,6 +148,10 @@ DEMO_SQL="$STATE_DIR/001_demo.sql"
 go run migrations/generator.go --profile=demo > "$DEMO_SQL"
 psql -v ON_ERROR_STOP=1 -h "$PGHOST" -p "$PGPORT" -U "$PGMIGRATORUSER" -d "$PGDATABASE" -f "$DEMO_SQL"
 
+log "applying numbered migrations after 001 (scripts/ci/apply_extra_migrations.sh)"
+PGHOST="$PGHOST" PGPORT="$PGPORT" PGUSER="$PGMIGRATORUSER" PGDATABASE="$PGDATABASE" \
+  bash scripts/ci/apply_extra_migrations.sh
+
 psql -v ON_ERROR_STOP=1 -h "$PGHOST" -p "$PGPORT" -U "$PGMIGRATORUSER" -d "$PGDATABASE" -c \
   "ALTER ROLE vyomanaut_app WITH PASSWORD '$PGAPPPASSWORD';
    ALTER ROLE vyomanaut_gc  WITH PASSWORD '$PGAPPPASSWORD';"

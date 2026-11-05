@@ -48,6 +48,27 @@ writes the nonce there in the same transaction as the receipt.
 - Migration files: NNN_description.sql (zero-padded 3 digits, sequential, no gaps).
 - Never edit a committed migration; write a new one.
 
+## Numbered migrations after 001
+
+`001_initial_schema*.sql` is generated per profile and holds the core schema.
+Anything added later is a hand-written, profile-invariant file named
+`NNN_description.sql` (zero-padded, never edited once committed) and is applied
+by `scripts/ci/apply_extra_migrations.sh` after 001, in numeric order. CI
+(check-07) and `scripts/demo/up.sh` / `up.ps1` all call it.
+
+Two files with the same number are a hard error, so feature branches claim a
+number up front instead of racing for "the next one":
+
+| Number | Owner |
+|---|---|
+| 002 | chain / payments feature |
+| 003 | Arkiv mirror feature |
+
+Rules for a new table: create it in your own file, `GRANT` only what
+`vyomanaut_app` needs, never touch `audit_receipts` or `escrow_events` (their
+append-only policies are part of the schema's guarantees), and add `FORCE ROW
+LEVEL SECURITY` only if the table is meant to be append-only.
+
 ## Checklist
 
   Run scripts/ci/migration_check.sh after every migration apply to verify DM §9 invariants.

@@ -171,7 +171,7 @@
   #      reference to a metric that was renamed or removed.
   #   2. Allow-list (A6): every {subsystem} extracted from a
   #      vyomanaut_{subsystem}_{name}_{unit} name must be one of audit,
-  #      scoring, repair, payment, cluster, storage, daemon, db.
+  #      scoring, repair, payment, cluster, storage, daemon, db, chain, arkiv.
   #   3. Reverse: every metric registered in
   #      internal/metrics/microservice.go — the microservice's
   #      centrally-scraped /metrics surface — must be referenced somewhere
@@ -201,7 +201,7 @@
     local dashboard="$REPO_ROOT/deployments/grafana/dashboards/vyomanaut.json"
     local alerts="$REPO_ROOT/deployments/grafana/alerts.yaml"
     local registry_dir="$REPO_ROOT/internal/metrics"
-    local allowlist="audit scoring repair payment cluster storage daemon db"
+    local allowlist="audit scoring repair payment cluster storage daemon db chain arkiv"
     local bad=0
 
     strip_suffix() {
