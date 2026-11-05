@@ -17,6 +17,17 @@ This is where **Version 2** of the project is built.
 
 ---
 
+## Team
+
+Built by Vyomanaut Labs:
+
+- **Aryan Singh**: [@masamasaowl](https://github.com/masamasaowl)
+- **Amaresh Singh**: [@amar641](https://github.com/amar641)
+
+Both are authors of the demo report (VLD-001).
+
+---
+
 ## What is Vyomanaut?
 
 Vyomanaut is a network where your files are split, encrypted, and spread across many independent providers.

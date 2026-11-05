@@ -1,51 +1,65 @@
-# CODEOWNERS — Vyomanaut V2
+# CODEOWNERS — Vyomanaut
 # REF: MVP §8.4
 #
-# GitHub enforces this file on every PR. A PR modifying a listed path
-# cannot be merged until ALL listed owners approve it.
+# GitHub enforces this file on every PR when branch protection requires review
+# from code owners. A PR modifying a listed path needs approval from a listed
+# owner. Owners need write access to the repository.
 #
 # Current team:
-#   @masamasaowl  — project lead
-#   @reviewer1      — core contributor
-#   @reviewer2     — core contributor
+#   @masamasaowl  — Aryan Singh, project lead
+#   @amar641      — Amaresh Singh, co-founder
 #
-# TODO: replace placeholder handles with real ones as team grows.
-
-# ─── CI / CODEOWNERS — changes here require unanimous approval ────────────────
+# The placeholder handles from the original file are replaced with the real
+# second owner.
 
 # ─── Catch-all: everything else requires at least the project lead ────────────
 
 *                           @masamasaowl
 
 # A PR that removes a required CI check is automatically blocked.
-/.github/                   @masamasaowl @reviewer2 @reviewer1
+/.github/                   @masamasaowl @amar641
 
-# ─── Migrations — highest-sensitivity path; all three owners required ─────────
-# REF: MVP §8.4 — "/migrations/ directory requires three reviewers"
-/migrations/                @masamasaowl @reviewer2 @reviewer1
+# ─── Migrations — highest-sensitivity path; both owners ───────────────────────
+# REF: MVP §8.4 — "/migrations/ directory requires multiple reviewers"
+/migrations/                @masamasaowl @amar641
 
 # ─── Core internal packages — two reviewers each ──────────────────────────────
-/internal/crypto/           @masamasaowl @reviewer2
-/internal/payment/          @masamasaowl @reviewer2
-/internal/audit/            @masamasaowl @reviewer2
-/internal/scoring/          @masamasaowl @reviewer2
-/internal/repair/           @masamasaowl @reviewer1
-/internal/erasure/          @masamasaowl @reviewer1
-/internal/storage/          @masamasaowl @reviewer1
-/internal/p2p/              @masamasaowl @reviewer2
-/internal/cluster/          @masamasaowl @reviewer2
-/internal/vettingchunk/     @masamasaowl @reviewer1
-/internal/config/           @masamasaowl @reviewer2
-/internal/api/              @masamasaowl @reviewer2
-/internal/secrets/          @masamasaowl @reviewer2
-/internal/metrics/          @masamasaowl @reviewer1
-/internal/client/           @masamasaowl @reviewer1
+/internal/crypto/           @masamasaowl @amar641
+/internal/payment/          @masamasaowl @amar641
+/internal/audit/            @masamasaowl @amar641
+/internal/scoring/          @masamasaowl @amar641
+/internal/repair/           @masamasaowl @amar641
+/internal/erasure/          @masamasaowl @amar641
+/internal/storage/          @masamasaowl @amar641
+/internal/p2p/              @masamasaowl @amar641
+/internal/cluster/          @masamasaowl @amar641
+/internal/vettingchunk/     @masamasaowl @amar641
+/internal/config/           @masamasaowl @amar641
+/internal/api/              @masamasaowl @amar641
+/internal/secrets/          @masamasaowl @amar641
+/internal/metrics/          @masamasaowl @amar641
+/internal/client/           @masamasaowl @amar641
 
 # ─── Binaries — one reviewer sufficient ───────────────────────────────────────
-/cmd/                       @masamasaowl
+/cmd/                       @masamasaowl @amar641
 
 # ─── Scripts and CI checks ────────────────────────────────────────────────────
-/scripts/                   @masamasaowl @reviewer2
+/scripts/                   @masamasaowl @amar641
 
 # ─── Docs ─────────────────────────────────────────────────────────────────────
-/docs/                      @masamasaowl
+/docs/                      @masamasaowl @amar641
+
+# ─── Shared by both feature branches ──────────────────────────────────────────
+/internal/receiptleaf/      @masamasaowl @amar641
+
+# ─── Arkiv integration — Amaresh leads, Aryan reviews ─────────────────────────
+# Later entries win over earlier ones, so these stay below the general rules.
+/internal/arkiv/                                @amar641 @masamasaowl
+/cmd/arkivcheck/                                @amar641 @masamasaowl
+/cmd/microservice/arkiv_ext.go                  @amar641 @masamasaowl
+/cmd/microservice/config_arkiv.go               @amar641 @masamasaowl
+/internal/metrics/arkiv.go                      @amar641 @masamasaowl
+/deployments/grafana/dashboards/arkiv.json      @amar641 @masamasaowl
+/scripts/demo/arkiv_*                           @amar641 @masamasaowl
+/docs/ARKIV.md                                  @amar641 @masamasaowl
+/ARKIV_FEEDBACK.md                              @amar641 @masamasaowl
