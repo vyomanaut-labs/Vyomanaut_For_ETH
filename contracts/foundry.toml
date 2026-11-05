@@ -1,0 +1,22 @@
+[profile.default]
+src = "src"
+test = "test"
+script = "script"
+out = "out"
+cache_path = "cache"
+libs = []
+# Verification on the Whitechain explorer fails if the compiler differs, so the
+# version and the EVM target are pinned. prague is the highest target that
+# runs on Whitechain Mainnet and Whitechain Sepolia.
+solc = "0.8.30"
+evm_version = "prague"
+optimizer = true
+optimizer_runs = 200
+bytecode_hash = "none"
+cbor_metadata = false
+
+[profile.default.fuzz]
+runs = 512
+
+[rpc_endpoints]
+whitechain_sepolia = "${WHITECHAIN_SEPOLIA_RPC_URL}"
