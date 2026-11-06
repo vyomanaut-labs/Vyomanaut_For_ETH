@@ -138,6 +138,20 @@ func Dial(ctx context.Context, rpcURL, accessKey string, o Options) (*Client, er
 	return c, nil
 }
 
+// DialReadOnly connects for queries only (no wallet). Create on the result
+// fails; Query, ByKey and ChainID work.
+func DialReadOnly(ctx context.Context, rpcURL, accessKey string) (*Client, error) {
+	var opts []rpc.ClientOption
+	if accessKey != "" {
+		opts = append(opts, rpc.WithHeader("X-API-KEY", accessKey))
+	}
+	rc, err := rpc.DialOptions(ctx, rpcURL, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("arkiv: dial: %w", err)
+	}
+	return &Client{be: ethclient.NewClient(rc), q: rc, closeFn: rc.Close}, nil
+}
+
 // Close releases the connection made by Dial. It is a no-op for New.
 func (c *Client) Close() {
 	if c.closeFn != nil {
@@ -147,6 +161,9 @@ func (c *Client) Close() {
 
 // Owner is the wallet address that owns every entity this client creates.
 func (c *Client) Owner() common.Address { return c.owner }
+
+// ChainID is the chain the node reports.
+func (c *Client) ChainID(ctx context.Context) (*big.Int, error) { return c.be.ChainID(ctx) }
 
 // Balance is the wallet's native balance in wei (tGLM on Rabdi).
 func (c *Client) Balance(ctx context.Context) (*big.Int, error) {
@@ -164,6 +181,9 @@ type CreateResult struct {
 // Create writes one entity and waits for its receipt. It is safe to call from
 // several goroutines; the calls are serialised.
 func (c *Client) Create(ctx context.Context, attrs []Attribute) (CreateResult, error) {
+	if c.key == nil {
+		return CreateResult{}, errors.New("arkiv: this client is read-only")
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
