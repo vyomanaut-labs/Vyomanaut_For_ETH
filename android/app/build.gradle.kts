@@ -33,6 +33,12 @@ android {
     buildFeatures {
         compose = true
     }
+    // libprovider.so is an executable, not a library: it must be extracted to disk to be run.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
 }
 
 dependencies {
