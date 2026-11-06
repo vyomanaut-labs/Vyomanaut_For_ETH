@@ -131,6 +131,34 @@ func RelayRoute(m Multiaddr) (relayHostport string, target PeerID, ok bool) {
 	return ma.relayHostport, ma.relayTo, true
 }
 
+// PrefersRelay reports whether addrs will be dialled through a relay: Connect
+// tries addresses in order, and a provider that needs a relay (an Android
+// phone, for one) lists its relay address first. Callers use it to give such
+// peers time budgets that fit a relayed, often mobile, path instead of a
+// direct LAN one.
+func PrefersRelay(addrs []Multiaddr) bool {
+	if len(addrs) == 0 {
+		return false
+	}
+	_, _, ok := RelayRoute(addrs[0])
+	return ok
+}
+
+// RelayTransferTimeout is the smallest per-stream deadline TransferTimeout
+// gives a relayed peer: a 256 KiB shard to or from a phone crosses the relay
+// and a mobile link, where a direct-LAN budget of a few seconds is not enough.
+const RelayTransferTimeout = 30 * time.Second
+
+// TransferTimeout returns the stream deadline to use for one shard transfer
+// with a peer at addrs: direct unchanged, at least RelayTransferTimeout when
+// the peer is reached through a relay (see PrefersRelay).
+func TransferTimeout(addrs []Multiaddr, direct time.Duration) time.Duration {
+	if PrefersRelay(addrs) && direct < RelayTransferTimeout {
+		return RelayTransferTimeout
+	}
+	return direct
+}
+
 // RelayMultiaddr builds the address a provider behind a relay advertises:
 // /ip4/<relay>/tcp/<port>/p2p-circuit/p2p/<self>. relayHostport is "ip:port".
 func RelayMultiaddr(relayHostport string, self PeerID) (Multiaddr, error) {

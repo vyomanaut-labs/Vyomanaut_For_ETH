@@ -1,6 +1,9 @@
 package p2p
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestRelayMultiaddrNamingItsRelay(t *testing.T) {
 	const target = "12D3KooWTargetPeer"
@@ -76,5 +79,31 @@ func TestDirectAddressesAreUnchanged(t *testing.T) {
 	}
 	if hp, ok := m.HostPort(); !ok || hp != "10.35.114.7:30303" || m.IsRelay() {
 		t.Errorf("direct address parsed as (%q, %v, relay=%v)", hp, ok, m.IsRelay())
+	}
+}
+
+func TestPrefersRelay(t *testing.T) {
+	relay, _ := ParseMultiaddr("/ip4/10.0.0.1/tcp/30300/p2p-circuit/p2p/X")
+	direct, _ := ParseMultiaddr("/ip4/10.0.0.7/tcp/30303")
+	bare, _ := ParseMultiaddr("/p2p-circuit/p2p/X")
+	if !PrefersRelay([]Multiaddr{relay, direct}) {
+		t.Error("relay listed first: PrefersRelay = false")
+	}
+	if PrefersRelay([]Multiaddr{direct, relay}) || PrefersRelay(nil) || PrefersRelay([]Multiaddr{bare}) {
+		t.Error("PrefersRelay = true for a direct-first, empty or relay-less list")
+	}
+}
+
+func TestTransferTimeout(t *testing.T) {
+	relay, _ := ParseMultiaddr("/ip4/10.0.0.1/tcp/30300/p2p-circuit/p2p/X")
+	direct, _ := ParseMultiaddr("/ip4/10.0.0.7/tcp/30303")
+	if got := TransferTimeout([]Multiaddr{direct}, 5*time.Second); got != 5*time.Second {
+		t.Errorf("direct: %s, want 5s unchanged", got)
+	}
+	if got := TransferTimeout([]Multiaddr{relay, direct}, 5*time.Second); got != RelayTransferTimeout {
+		t.Errorf("relayed: %s, want %s", got, RelayTransferTimeout)
+	}
+	if got := TransferTimeout([]Multiaddr{relay}, time.Minute); got != time.Minute {
+		t.Errorf("relayed with a longer budget: %s, want it kept", got)
 	}
 }
