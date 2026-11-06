@@ -9,9 +9,11 @@ import java.net.Inet4Address
 data class NetworkStatus(
     val zeroTierInstalled: Boolean,
     val vpnActive: Boolean,
-    /** IPv4 addresses on VPN networks. With ZeroTier running this includes the phone's ZeroTier address. */
-    val vpnAddresses: List<String>,
-)
+    /** IPv4 addresses on VPN networks, with prefix lengths. With ZeroTier on this includes its address. */
+    val vpnLinkAddresses: List<VpnAddress>,
+) {
+    val vpnAddresses: List<String> get() = vpnLinkAddresses.map { it.address }
+}
 
 object NetworkStatusReader {
     const val ZEROTIER_PACKAGE = "com.zerotier.one"
@@ -26,13 +28,12 @@ object NetworkStatusReader {
         val addresses = vpnNetworks
             .mapNotNull { manager.getLinkProperties(it) }
             .flatMap { it.linkAddresses }
-            .map { it.address }
-            .filterIsInstance<Inet4Address>()
-            .mapNotNull { it.hostAddress }
+            .filter { it.address is Inet4Address }
+            .mapNotNull { link -> link.address.hostAddress?.let { VpnAddress(it, link.prefixLength) } }
         return NetworkStatus(
             zeroTierInstalled = isInstalled(context, ZEROTIER_PACKAGE),
             vpnActive = vpnNetworks.isNotEmpty(),
-            vpnAddresses = addresses,
+            vpnLinkAddresses = addresses,
         )
     }
 

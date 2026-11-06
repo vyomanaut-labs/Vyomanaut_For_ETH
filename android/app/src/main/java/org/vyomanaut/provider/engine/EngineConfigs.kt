@@ -1,10 +1,12 @@
 package org.vyomanaut.provider.engine
 
 import android.content.Context
+import org.vyomanaut.provider.network.AddressPicker
 import org.vyomanaut.provider.network.NetworkStatusReader
 import org.vyomanaut.provider.network.OnboardingStore
 import org.vyomanaut.provider.storage.LimitStore
 import java.io.File
+import java.net.URI
 
 /** Gathers the saved settings and the phone's current ZeroTier address into an engine configuration. */
 object EngineConfigs {
@@ -23,8 +25,18 @@ object EngineConfigs {
             coordinatorUrl = url,
             phone = onboarding.phone(),
             limitBytes = LimitStore(context).limitBytes(),
-            vpnAddresses = NetworkStatusReader.read(context).vpnAddresses,
+            vpnAddresses = listOfNotNull(zeroTierAddress(context, url)),
             dataDir = dataDir(context).absolutePath,
         )
+    }
+
+    /** The VPN address to advertise: the one on the coordinator's ZeroTier subnet (see [AddressPicker]). */
+    fun zeroTierAddress(context: Context, coordinatorUrl: String): String? {
+        val host = try {
+            URI(coordinatorUrl).host
+        } catch (e: java.net.URISyntaxException) {
+            null
+        }
+        return AddressPicker.pick(NetworkStatusReader.read(context).vpnLinkAddresses, host)
     }
 }
