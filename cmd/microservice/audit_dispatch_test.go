@@ -260,7 +260,7 @@ func TestDispatchUsesPoolMedianRTOForNewProviders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scoring.PoolMedianRTO: %v", err)
 	}
-	got, err := computeRTO(context.Background(), db, providerID)
+	got, err := computeRTO(context.Background(), db, providerID, false)
 	if err != nil {
 		t.Fatalf("computeRTO: %v", err)
 	}

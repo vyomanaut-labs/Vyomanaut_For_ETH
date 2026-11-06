@@ -350,6 +350,13 @@ func DialViaRelay(ctx context.Context, relayAddr string, targetID PeerID) (net.C
 	req = append(req, 'F') // 'F' = Forward
 	req = append(req, byte(len(targetID)))
 	req = append(req, []byte(targetID)...)
+	// The relay answers only once the target has connected back to it
+	// (relay.go), so bound the wait: by ctx's deadline when it has one.
+	deadline := time.Now().Add(connectTimeout + relayConnectBackTimeout)
+	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
+		deadline = d
+	}
+	_ = conn.SetDeadline(deadline)
 	if _, err := conn.Write(req); err != nil {
 		_ = conn.Close()
 		return nil, fmt.Errorf("p2p.DialViaRelay: write request: %w", err)
@@ -364,6 +371,7 @@ func DialViaRelay(ctx context.Context, relayAddr string, targetID PeerID) (net.C
 		_ = conn.Close()
 		return nil, fmt.Errorf("p2p.DialViaRelay: relay %s could not reach target %s", relayAddr, targetID)
 	}
+	_ = conn.SetDeadline(time.Time{})
 
 	return conn, nil
 }

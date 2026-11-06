@@ -1,0 +1,6 @@
+# Android-only line-ending rules, layered on top of the repository's root .gitattributes.
+gradlew       text eol=lf
+*.bat         text eol=crlf
+*.jar         binary
+*.webp        binary
+*.so          binary

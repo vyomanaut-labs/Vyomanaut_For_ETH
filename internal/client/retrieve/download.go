@@ -265,7 +265,7 @@ func (o *Orchestrator) fetchOneShard(ctx context.Context, providerID uuid.UUID, 
 		return nil, fmt.Errorf("provider %s: open chunk-download stream: %w", providerID, err)
 	}
 	defer func() { _ = stream.Close() }()
-	if err := stream.SetDeadline(time.Now().Add(chunkDownloadTimeout)); err != nil {
+	if err := stream.SetDeadline(time.Now().Add(p2p.TransferTimeout(addrs, chunkDownloadTimeout))); err != nil {
 		return nil, fmt.Errorf("provider %s: set deadline: %w", providerID, err)
 	}
 

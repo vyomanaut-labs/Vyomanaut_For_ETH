@@ -272,6 +272,26 @@ func (h *host) Connect(ctx context.Context, peerID PeerID, addrs []Multiaddr) er
 	var lastErr error
 	var mismatchErr error // first ErrPeerIDMismatch seen across any address, if any (M6 review §5.2)
 	for _, addr := range addrs {
+		// A relay address naming its relay node (relay.go, ARCH §13 Tier 3):
+		// reach the peer through the relay, still verifying its identity with
+		// the end-to-end TLS handshake.
+		if relayAddr, target, viaRelay := RelayRoute(addr); viaRelay {
+			if target != peerID {
+				lastErr = fmt.Errorf("p2p.Connect: %s: relay address is for %s, not %s", addr, target, peerID)
+				continue
+			}
+			if err := h.verifyViaRelay(ctx, peerID, relayAddr); err != nil {
+				lastErr = err
+				if mismatchErr == nil && errors.Is(err, ErrPeerIDMismatch) {
+					mismatchErr = err
+				}
+				continue
+			}
+			h.mu.Lock()
+			h.knownAddrs[peerID] = addr
+			h.mu.Unlock()
+			return nil
+		}
 		hostport, ok := addr.HostPort()
 		if !ok {
 			lastErr = fmt.Errorf("p2p.Connect: %s: not a directly dialable address (relay addresses require SetupNAT's relay client)", addr)
@@ -322,6 +342,30 @@ func (h *host) Connect(ctx context.Context, peerID PeerID, addrs []Multiaddr) er
 // extension Connect and every caller of it, indefinitely; ctx alone never
 // carried a deadline here in practice (every real caller passes a
 // process-lifetime context, not a per-call one).
+// verifyViaRelay is dialAndVerify for a peer reached through a relay.
+func (h *host) verifyViaRelay(ctx context.Context, peerID PeerID, relayAddr string) error {
+	dialCtx, cancel := context.WithTimeout(ctx, connectTimeout)
+	defer cancel()
+	raw, err := DialViaRelay(dialCtx, relayAddr, peerID)
+	if err != nil {
+		return fmt.Errorf("p2p.Connect: %w", err)
+	}
+	tlsConn := tls.Client(raw, &tls.Config{
+		Certificates:          []tls.Certificate{h.cert},
+		InsecureSkipVerify:    true, //nolint:gosec // explicit peer-ID verification below
+		MinVersion:            tls.VersionTLS13,
+		VerifyPeerCertificate: verifyPeerCertificateAgainst(peerID),
+	})
+	if err := tlsConn.HandshakeContext(dialCtx); err != nil {
+		_ = raw.Close()
+		if errors.Is(err, errPeerIDMismatchTLS) {
+			return ErrPeerIDMismatch
+		}
+		return fmt.Errorf("p2p.Connect: TLS via relay %s: %w", relayAddr, err)
+	}
+	return tlsConn.Close()
+}
+
 func (h *host) dialAndVerify(ctx context.Context, peerID PeerID, hostport string) error {
 	dialCtx, cancel := context.WithTimeout(ctx, connectTimeout)
 	defer cancel()
@@ -360,6 +404,15 @@ func (h *host) NewStream(ctx context.Context, peerID PeerID, protocolID Protocol
 	h.mu.RUnlock()
 	if !known {
 		return nil, fmt.Errorf("p2p.NewStream: no known address for %s; call Connect first", peerID)
+	}
+	if relayAddr, _, viaRelay := RelayRoute(addr); viaRelay {
+		dialCtx, cancel := context.WithTimeout(ctx, connectTimeout)
+		raw, err := DialViaRelay(dialCtx, relayAddr, peerID)
+		cancel()
+		if err != nil {
+			return nil, fmt.Errorf("p2p.NewStream: %w", err)
+		}
+		return h.authenticateAndNegotiate(ctx, raw, peerID, protocolID)
 	}
 	hostport, ok := addr.HostPort()
 	if !ok {

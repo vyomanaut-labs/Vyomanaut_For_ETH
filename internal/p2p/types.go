@@ -82,6 +82,9 @@ func (s NATStatus) String() string {
 //	/ip6/<addr>/tcp/<port>
 //	/dns4/<host>/tcp/<port>
 //	/p2p-circuit/p2p/<PeerID>              (relay-forwarded address; not directly dialable)
+//	/ip4/<relay>/tcp/<port>/p2p-circuit/p2p/<PeerID>
+//	                                       (relay-forwarded via a named relay node: dialable
+//	                                        through DialViaRelay, see RelayRoute)
 //
 // Mirrors github.com/multiformats/go-multiaddr.Multiaddr closely enough to be a
 // drop-in replacement later; this package does not attempt full multiaddr
@@ -108,6 +111,83 @@ type multiaddr struct {
 	hostport string
 	isRelay  bool
 	relayTo  PeerID // target peer ID when isRelay
+	// relayHostport is the relay node's "host:port" when the address names
+	// its relay (/ip4/<relay>/tcp/<port>/p2p-circuit/p2p/<PeerID>); empty for
+	// the bare /p2p-circuit/p2p/<PeerID> form.
+	relayHostport string
+}
+
+// RelayRoute returns the relay node to dial and the peer to ask it for, for a
+// relay address that names its relay node. ok is false for direct addresses
+// and for the bare /p2p-circuit/p2p/<PeerID> form, which names no relay.
+//
+// A package function rather than a Multiaddr method so existing Multiaddr
+// implementations (test fakes included) need no change.
+func RelayRoute(m Multiaddr) (relayHostport string, target PeerID, ok bool) {
+	ma, isConcrete := m.(*multiaddr)
+	if !isConcrete || !ma.isRelay || ma.relayHostport == "" {
+		return "", "", false
+	}
+	return ma.relayHostport, ma.relayTo, true
+}
+
+// PrefersRelay reports whether addrs will be dialled through a relay: Connect
+// tries addresses in order, and a provider that needs a relay (an Android
+// phone, for one) lists its relay address first. Callers use it to give such
+// peers time budgets that fit a relayed, often mobile, path instead of a
+// direct LAN one.
+func PrefersRelay(addrs []Multiaddr) bool {
+	if len(addrs) == 0 {
+		return false
+	}
+	_, _, ok := RelayRoute(addrs[0])
+	return ok
+}
+
+// RelayTransferTimeout is the smallest per-stream deadline TransferTimeout
+// gives a relayed peer: a 256 KiB shard to or from a phone crosses the relay
+// and a mobile link, where a direct-LAN budget of a few seconds is not enough.
+const RelayTransferTimeout = 30 * time.Second
+
+// TransferTimeout returns the stream deadline to use for one shard transfer
+// with a peer at addrs: direct unchanged, at least RelayTransferTimeout when
+// the peer is reached through a relay (see PrefersRelay).
+func TransferTimeout(addrs []Multiaddr, direct time.Duration) time.Duration {
+	if PrefersRelay(addrs) && direct < RelayTransferTimeout {
+		return RelayTransferTimeout
+	}
+	return direct
+}
+
+// RelayMultiaddr builds the address a provider behind a relay advertises:
+// /ip4/<relay>/tcp/<port>/p2p-circuit/p2p/<self>. relayHostport is "ip:port".
+func RelayMultiaddr(relayHostport string, self PeerID) (Multiaddr, error) {
+	host, port, ok := strings.Cut(relayHostport, ":")
+	if !ok || host == "" || port == "" {
+		return nil, fmt.Errorf("p2p: RelayMultiaddr: %q is not host:port", relayHostport)
+	}
+	family := "ip4"
+	if !isDottedIPv4(host) {
+		family = "dns4"
+	}
+	return ParseMultiaddr(fmt.Sprintf("/%s/%s/tcp/%s/p2p-circuit/p2p/%s", family, host, port, self))
+}
+
+// ipv4Octets is the number of dot-separated octets in an IPv4 literal.
+const ipv4Octets = 4
+
+func isDottedIPv4(host string) bool {
+	parts := strings.Split(host, ".")
+	if len(parts) != ipv4Octets {
+		return false
+	}
+	for _, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 0 || n > math.MaxUint8 {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *multiaddr) String() string  { return m.raw }
@@ -150,6 +230,26 @@ func ParseMultiaddr(s string) (Multiaddr, error) {
 			return nil, fmt.Errorf("p2p: ParseMultiaddr: %q: malformed relay address", s)
 		}
 		return &multiaddr{raw: s, isRelay: true, relayTo: PeerID(parts[2])}, nil
+	}
+
+	// Relay form naming its relay node:
+	// /ip4/<relay>/tcp/<port>[/p2p/<relayPeerID>]/p2p-circuit/p2p/<PeerID>.
+	// Checked before the direct form, which would otherwise accept the leading
+	// relay segments and silently treat the relay as the target itself.
+	if i := indexOf(parts, "p2p-circuit"); i > 0 {
+		tail := parts[i:]
+		if len(tail) != 3 || tail[1] != "p2p" || tail[2] == "" {
+			return nil, fmt.Errorf("p2p: ParseMultiaddr: %q: malformed relay address", s)
+		}
+		relay, err := ParseMultiaddr("/" + strings.Join(parts[:i], "/"))
+		if err != nil {
+			return nil, fmt.Errorf("p2p: ParseMultiaddr: %q: relay part: %w", s, err)
+		}
+		relayHostport, ok := relay.HostPort()
+		if !ok || relay.Network() != "tcp" {
+			return nil, fmt.Errorf("p2p: ParseMultiaddr: %q: relay node must be a tcp address", s)
+		}
+		return &multiaddr{raw: s, isRelay: true, relayTo: PeerID(tail[2]), relayHostport: relayHostport}, nil
 	}
 
 	if len(parts) < minDirectMultiaddrSegments {
@@ -228,3 +328,12 @@ type Stream interface {
 // StreamHandler processes one incoming stream. The Host invokes it in a new
 // goroutine per stream (IC §4).
 type StreamHandler func(Stream)
+
+func indexOf(parts []string, want string) int {
+	for i, p := range parts {
+		if p == want {
+			return i
+		}
+	}
+	return -1
+}

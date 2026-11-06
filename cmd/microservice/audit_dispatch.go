@@ -351,7 +351,7 @@ func dispatchOneChallenge(
 	// Step 4-5: resolve the provider's real p2p identity, connect, and open
 	// the /vyomanaut/audit-challenge/1.0.0 stream (repairTransport-equivalent
 	// for audit — the same p2p.Host session 12.1.1 constructs).
-	stream, dispatchStart, err := openChallengeStream(ctx, db, host, dht, assignment.ProviderID)
+	stream, dispatchStart, viaRelay, err := openChallengeStream(ctx, db, host, dht, assignment.ProviderID)
 	if err != nil {
 		// Cannot even reach the provider: treat as a genuine TIMEOUT (no
 		// response is possible without a stream) rather than leaving the
@@ -361,7 +361,7 @@ func dispatchOneChallenge(
 	defer func() { _ = stream.Close() }()
 
 	// Step 6: apply the per-provider RTO timeout.
-	rto, err := computeRTO(ctx, db, assignment.ProviderID)
+	rto, err := computeRTO(ctx, db, assignment.ProviderID, viaRelay)
 	if err != nil {
 		return fmt.Errorf("computeRTO: %w", err)
 	}
@@ -436,20 +436,24 @@ func dispatchOneChallenge(
 // connects, and opens the audit-challenge stream. Returns the dispatch
 // timestamp captured immediately before the stream open, for
 // responseLatencyMs measurement.
-func openChallengeStream(ctx context.Context, db *sql.DB, host p2p.Host, dht p2p.DHT, providerID uuid.UUID) (p2p.Stream, time.Time, error) {
+//
+// viaRelay reports whether the provider is reached through a relay node (an
+// Android phone, ARCH §13 Tier 3), so computeRTO can size its window for that
+// path.
+func openChallengeStream(ctx context.Context, db *sql.DB, host p2p.Host, dht p2p.DHT, providerID uuid.UUID) (p2p.Stream, time.Time, bool, error) {
 	peerID, addrs, err := resolveProviderPeer(ctx, db, dht, providerID)
 	if err != nil {
-		return nil, time.Time{}, err
+		return nil, time.Time{}, false, err
 	}
 	if err := host.Connect(ctx, peerID, addrs); err != nil {
-		return nil, time.Time{}, err
+		return nil, time.Time{}, false, err
 	}
 	dispatchStart := time.Now()
 	stream, err := host.NewStream(ctx, peerID, auditChallengeProtocolID)
 	if err != nil {
-		return nil, time.Time{}, err
+		return nil, time.Time{}, false, err
 	}
-	return stream, dispatchStart, nil
+	return stream, dispatchStart, p2p.PrefersRelay(addrs), nil
 }
 
 // writeChallengeRequest writes IC §4.2's Frame 1: length(4) || chunk_id(32)
@@ -633,13 +637,24 @@ const bootstrapFallbackRTO = 15 * time.Second
 
 const rtoVarianceMultiplier = 4
 
+// rtoSampleThreshold is how many own samples a provider needs before its own
+// avg+4*var replaces the pool median (IC §4.2).
+const rtoSampleThreshold = 5
+
+// relayMinRTO is the smallest audit window for a provider reached through a
+// relay (ARCH §13 Tier 3), in practice an Android phone on mobile data and
+// ZeroTier. Its response time includes the relay asking the phone to connect
+// back and a TLS handshake over that path: about a second, with mobile-network
+// spikes of several more. Found live: phones passed their first audits under
+// bootstrapFallbackRTO, then got the pool median of seven PC providers on one
+// machine (a few milliseconds) and timed out every time after.
+const relayMinRTO = 5 * time.Second
+
 // computeRTO returns the per-provider RTO timeout (IC §4.2): the pool-median
 // RTO for a provider with fewer than 5 samples, otherwise
 // avg_rtt_ms + 4*var_rtt_ms from that provider's own row (ADR-006, FR-040,
-// Milestone 8).
-func computeRTO(ctx context.Context, db *sql.DB, providerID uuid.UUID) (time.Duration, error) {
-	const rtoSampleThreshold = 5
-
+// Milestone 8). viaRelay adjusts both for relayed providers; see rtoFor.
+func computeRTO(ctx context.Context, db *sql.DB, providerID uuid.UUID, viaRelay bool) (time.Duration, error) {
 	var (
 		sampleCount int
 		avgRTT      sql.NullFloat64
@@ -653,19 +668,51 @@ func computeRTO(ctx context.Context, db *sql.DB, providerID uuid.UUID) (time.Dur
 		return 0, err
 	}
 
-	if sampleCount < rtoSampleThreshold || !avgRTT.Valid {
-		medianMs, err := scoring.PoolMedianRTO(ctx, db)
-		if err != nil {
-			if errors.Is(err, scoring.ErrNoPoolMedianAvailable) {
-				return bootstrapFallbackRTO, nil
-			}
+	ownSamples := sampleCount >= rtoSampleThreshold && avgRTT.Valid
+	var (
+		medianMs  float64
+		hasMedian bool
+	)
+	// A relayed provider never takes the pool median (rtoFor), so skip the
+	// query for it.
+	if !ownSamples && !viaRelay {
+		medianMs, err = scoring.PoolMedianRTO(ctx, db)
+		switch {
+		case err == nil:
+			hasMedian = true
+		case errors.Is(err, scoring.ErrNoPoolMedianAvailable):
+		default:
 			return 0, err
 		}
-		return time.Duration(medianMs * float64(time.Millisecond)), nil
 	}
+	return rtoFor(ownSamples, avgRTT.Float64, varRTT.Float64, medianMs, hasMedian, viaRelay), nil
+}
 
-	rtoMs := avgRTT.Float64 + rtoVarianceMultiplier*varRTT.Float64
-	return time.Duration(rtoMs * float64(time.Millisecond)), nil
+// rtoFor is computeRTO's pure decision.
+//
+// Direct providers are unchanged: own avg+4*var once they have enough
+// samples, else the pool median, else bootstrapFallbackRTO.
+//
+// Relayed providers never take the pool median while they have too few own
+// samples: the pool is dominated by directly reachable machines, whose window
+// a relayed path cannot meet. Because a TIMEOUT records no sample, a phone
+// held to that window would never collect the samples that would free it.
+// They get bootstrapFallbackRTO until their own samples exist, and never
+// less than relayMinRTO afterwards.
+func rtoFor(ownSamples bool, avgMs, varMs, poolMedianMs float64, hasPoolMedian, viaRelay bool) time.Duration {
+	var rto time.Duration
+	switch {
+	case ownSamples:
+		rto = time.Duration((avgMs + rtoVarianceMultiplier*varMs) * float64(time.Millisecond))
+	case hasPoolMedian && !viaRelay:
+		rto = time.Duration(poolMedianMs * float64(time.Millisecond))
+	default:
+		rto = bootstrapFallbackRTO
+	}
+	if viaRelay && rto < relayMinRTO {
+		rto = relayMinRTO
+	}
+	return rto
 }
 
 // currentP95ThroughputKbps reads providers.p95_throughput_kbps BEFORE
