@@ -17,6 +17,7 @@
 #   VYOMANAUT_CHAIN_PRIVATE_KEY_FILE  (default: ~/vyoma-keys/deployer.key)
 #   VYOMANAUT_CHAIN_ANCHOR_INTERVAL_SECONDS (default 120 here; the code default is 600)
 #   VYOMANAUT_CHAIN_API_ADDR          (default :8090)
+#   VYOMANAUT_CHAIN_DEPLOYMENT_FILE   (default: deployments/whitechain/sepolia.json, our contracts)
 #
 # START_BLOCK is the chain's current block, so deposits and anchors from earlier
 # runs are not replayed into this run's fresh database. Make deposits AFTER
@@ -25,7 +26,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." >/dev/null 2>&1 && pwd)"
-DEPLOY_JSON="$REPO_ROOT/deployments/whitechain/sepolia.json"
+# Your own network: deploy your own contracts (contracts/README.md), write a file
+# shaped like deployments/whitechain/sepolia.json, and point this at it.
+DEPLOY_JSON="${VYOMANAUT_CHAIN_DEPLOYMENT_FILE:-$REPO_ROOT/deployments/whitechain/sepolia.json}"
 
 note() { echo "# [chain_env] $*" >&2; }
 die() { echo "# [chain_env] $*" >&2; echo "false"; exit 1; }

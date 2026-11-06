@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # scripts/demo/join.ps1 — M17-E Session 17.8.1 (ADR-084 requirement 2,
 # F-D-2, F-D-4).
 #
@@ -17,6 +17,9 @@ param(
 
     [int]$ListenPort = 30303,
     [string]$AdvertiseAddr = "",
+    # A relay node to stay reachable through (cmd/relay, usually the coordinator's host on port 30300).
+    # Use it when nothing can connect TO this PC: behind a home router, or a coordinator in the cloud.
+    [string]$RelayAddrs = "",
     [string]$DataDir = (Join-Path $env:USERPROFILE ".vyomanaut"),
 
     # [Added, M18 Stage 3] Passed straight through to `provider run`.
@@ -68,6 +71,9 @@ if ($AdvertiseAddr) { $advertiseArgs = @("--advertise-addr", $AdvertiseAddr) }
 
 $metricsArgs = @()
 if ($MetricsAddr) { $metricsArgs = @("--metrics-addr", $MetricsAddr) }
+
+$relayArgs = @()
+if ($RelayAddrs) { $relayArgs = @("--relay-addrs", $RelayAddrs) }
 
 # [Added — clock-skew preflight, evidence: a real college-lab desktop run
 # over ZeroTier where the join itself, the OTP exchange, and onboarding all
@@ -197,5 +203,5 @@ $runArgs = @(
     "--data-dir=$DataDir",
     "--declared-storage-gb=$DeclaredStorageGB",
     "--listen-port=$ListenPort"
-) + $advertiseArgs + $metricsArgs
+) + $advertiseArgs + $relayArgs + $metricsArgs
 & $ProviderBin @runArgs

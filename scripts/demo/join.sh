@@ -24,7 +24,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: scripts/demo/join.sh <microservice-url> [--listen-port PORT] [--advertise-addr ADDR] [--data-dir DIR] [--metrics-addr ADDR]
+Usage: scripts/demo/join.sh <microservice-url> [--listen-port PORT] [--advertise-addr ADDR] [--relay-addrs HOST:PORT] [--data-dir DIR] [--metrics-addr ADDR]
 
   <microservice-url>     Required. The URL the network operator gave you,
                           e.g. http://192.168.1.42:8080 — printed by up.sh.
@@ -32,6 +32,11 @@ Usage: scripts/demo/join.sh <microservice-url> [--listen-port PORT] [--advertise
   --advertise-addr ADDR  This desktop's own reachable IPv4 address. Empty =
                           autodetect (F-D-4) — only override this if
                           autodetection picks the wrong interface.
+  --relay-addrs HOST:PORT
+                          A relay node to stay reachable through (cmd/relay,
+                          usually the coordinator's host on port 30300). Use it
+                          when nothing can connect TO this machine: behind a
+                          home router, or when the coordinator is in the cloud.
   --data-dir DIR         Where this provider's identity and storage live
                           (default ~/.vyomanaut). Re-running join.sh with the
                           same --data-dir resumes an already-onboarded provider
@@ -65,11 +70,13 @@ LISTEN_PORT=30303
 ADVERTISE_ADDR=""
 DATA_DIR="${HOME:-.}/.vyomanaut"
 METRICS_ADDR=""
+RELAY_ADDRS=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --listen-port) LISTEN_PORT="$2"; shift 2 ;;
     --advertise-addr) ADVERTISE_ADDR="$2"; shift 2 ;;
+    --relay-addrs) RELAY_ADDRS="$2"; shift 2 ;;
     --data-dir) DATA_DIR="$2"; shift 2 ;;
     --metrics-addr) METRICS_ADDR="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -117,6 +124,10 @@ fi
 ADVERTISE_FLAG=()
 if [[ -n "$ADVERTISE_ADDR" ]]; then
   ADVERTISE_FLAG=(--advertise-addr "$ADVERTISE_ADDR")
+fi
+RELAY_FLAG=()
+if [[ -n "$RELAY_ADDRS" ]]; then
+  RELAY_FLAG=(--relay-addrs "$RELAY_ADDRS")
 fi
 
 # Same bash-3.2-safe empty-array pattern as ADVERTISE_FLAG above, same
@@ -252,4 +263,5 @@ exec "$PROVIDER_BIN" run \
   --declared-storage-gb="$DECLARED_STORAGE_GB" \
   --listen-port="$LISTEN_PORT" \
   "${ADVERTISE_FLAG[@]+"${ADVERTISE_FLAG[@]}"}" \
+  "${RELAY_FLAG[@]+"${RELAY_FLAG[@]}"}" \
   "${METRICS_FLAG[@]+"${METRICS_FLAG[@]}"}"
