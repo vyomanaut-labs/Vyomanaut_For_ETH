@@ -145,9 +145,12 @@ func RelayMultiaddr(relayHostport string, self PeerID) (Multiaddr, error) {
 	return ParseMultiaddr(fmt.Sprintf("/%s/%s/tcp/%s/p2p-circuit/p2p/%s", family, host, port, self))
 }
 
+// ipv4Octets is the number of dot-separated octets in an IPv4 literal.
+const ipv4Octets = 4
+
 func isDottedIPv4(host string) bool {
 	parts := strings.Split(host, ".")
-	if len(parts) != 4 {
+	if len(parts) != ipv4Octets {
 		return false
 	}
 	for _, p := range parts {
