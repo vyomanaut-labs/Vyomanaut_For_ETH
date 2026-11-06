@@ -16,8 +16,10 @@ Built by [Vyomanaut Labs](https://www.linkedin.com/company/vyomanaut-labs) and e
 | **Ethereum Foundation (CROPS)** | Payouts and refunds work without us: censorship resistance built into the contract | [How it works](#the-on-chain-layer) |
 | **Arkiv** | Every audit result is published where anyone can read and check it | [Our Arkiv writer wallet](https://rabdi.explorer.arkiv.network/address/0x1044E36804C0cED0243529dc6Dc865a3E0b727B9) |
 
-> **Anyone can run a Vyomanaut network.** Bring your own machine, keys, wallets and contracts.
-> Section 4 shows how, on free hosting with no credit card.
+> **Anyone can run a Vyomanaut network.** Clone this repo and run one command on your laptop
+> (`scripts/demo/host.ps1` on Windows, `scripts/demo/host.sh` on macOS/Linux). It puts a QR code
+> on your screen; friends scan it and join from their phones or laptops. No VPN, no account, no
+> credit card. See [section 4](#4-run-your-own-network).
 
 ---
 
@@ -39,6 +41,7 @@ Built by [Vyomanaut Labs](https://www.linkedin.com/company/vyomanaut-labs) and e
 | You want to | Do this |
 | --- | --- |
 | **See it** | Watch the demo video: *link added on submission* |
+| **Join a network** | Scan the host's QR code, or open the address under it: [section 2](#2-become-a-provider) |
 | **Lend your phone's space** | Install the app, join our network: [section 2.1](#21-android-phone) |
 | **Store a file** | Download the client and upload: [section 3](#3-store-a-file) |
 | **Check our records without trusting us** | Run `arkivcheck public` or open the explorer links above: [section 5](#the-on-chain-layer) |
@@ -75,6 +78,22 @@ A provider lends disk space and is paid for keeping its pieces safe. You need:
 
 You need **no wallet, no coins and no VPN**. Your device opens connections out to the network's
 relay, so it works behind a home router or on mobile data.
+
+### The easy way: the host's QR code
+
+Every network has a join page at `<coordinator>/join`, and its host shows it as a QR code.
+
+- **Android phone:** scan the QR with your camera. Tap **Download the app** and install it, then
+  tap **Open in the app**. The app fills in the network by itself; type your phone number, tap
+  **Register this phone**, and enter the 6-digit code the host reads to you.
+- **Laptop:** open the address under the QR. The page shows one line to paste:
+  - Windows (PowerShell): `irm <coordinator>/join/install.ps1 | iex`
+  - macOS / Linux (Terminal): `curl -fsSL <coordinator>/join/install.sh | sh`
+
+  It downloads the provider, asks for your phone number and the host's code, and starts. Run the
+  same line again to restart. To leave, delete `~/.vyomanaut-join`.
+
+The steps below do the same by hand.
 
 ### 2.1 Android phone
 
@@ -189,6 +208,42 @@ Anyone can be a Vyomanaut **coordinator**: the machine that places pieces, runs 
 ledger, and writes to the chains. Your network uses **your** keys, **your** wallets and **your**
 contracts. Nothing of ours is needed.
 
+### 4.0 One command
+
+Install **Go 1.26+** and **Docker Desktop** (running), clone the repo, then:
+
+```powershell
+# Windows (PowerShell 7)
+pwsh scripts/demo/host.ps1 -Name "My network"
+```
+```bash
+# macOS / Linux (also needs psql, cloudflared and bore: brew install libpq cloudflared bore-cli)
+scripts/demo/host.sh --name "My network"
+```
+
+It starts Postgres, the relay, two free public tunnels (no account), the coordinator and 7 local
+providers, then opens two browser tabs:
+
+- **The big screen** (`/join/screen`): a QR code for phones and the address for laptops.
+- **Your join desk** (`/join/desk`): when someone registers, their 6-digit code shows up here
+  the moment it is sent. Read it to them; it works once, for 10 minutes. The desk also counts
+  devices online. It is locked with the admin key the script prints (the tab opens unlocked).
+
+Your network is invite-only: nobody gets in without a code from your desk.
+
+| Option | What it does |
+| --- | --- |
+| `-Local` / `--local` | No tunnels. Only devices on your Wi-Fi can join. Use it if the venue blocks tunnels. |
+| `-ChainApi` / `--chain-api` | Also gives the chain API a public address (the app's Payments tab). |
+| `-Providers N` / `--providers N` | Local providers to start (default 7). |
+| `-Stop` / `--stop` | Stops everything. |
+
+On Windows no `psql` is needed: the script runs it inside the Postgres container. The app and
+provider downloads come from your `dist/` folder (`scriptseleaseuild_release.ps1`), or from
+our GitHub release when `dist/` is empty.
+
+Sections 4.1 to 4.7 explain each piece, for running them yourself or on a cloud VM.
+
 ### 4.1 What you need
 
 - A machine people can reach: your laptop with free tunnels, a free student cloud VM, or a laptop
@@ -293,7 +348,20 @@ grep -E "EXTENSION|CHAIN|ARKIV" /tmp/vyomanaut-demo/logs/microservice.log
 
 ### 4.6 Let people join
 
-Share `http://<MY_IP>:8080`. When someone registers, read them their code:
+Show `http://<MY_IP>:8080/join/screen` (the QR) and open `http://localhost:8080/join/desk` (your
+codes; paste the `ADMIN_API_KEY` that `up.sh` printed). To point the join page at public
+addresses, set these before `up.sh`:
+
+| Variable | Example |
+| --- | --- |
+| `VYOMANAUT_NETWORK_NAME` | `My network` |
+| `VYOMANAUT_PUBLIC_URL` | `https://<random-words>.trycloudflare.com` |
+| `VYOMANAUT_PUBLIC_RELAY` | `bore.pub:41234` |
+| `VYOMANAUT_PUBLIC_CHAIN_API` | the chain API's public URL |
+| `VYOMANAUT_DOWNLOADS_DIR` | `dist` (serves the app and providers from this machine) |
+
+The app and other coordinators read them from `GET /api/v1/network/info`. Without the desk, read a
+code from the log:
 
 ```bash
 $BIN_DIR/operator otp --mode=demo --otp-delivery-log=$OTP_LOG <their phone number>
@@ -319,8 +387,8 @@ so no provider port needs opening.
 
 #### Option A: your laptop plus free tunnels (no account, no card)
 
-Run the network on a laptop exactly as in 4.4, then give it public addresses with two free
-tunnels:
+`host.ps1` / `host.sh` (4.0) do all of this for you. By hand: run the network on a laptop exactly
+as in 4.4, then give it public addresses with two free tunnels:
 
 ```bash
 # Terminal 2: the relay
@@ -372,9 +440,9 @@ whole network:
 The same steps work on any VM with a public IP. Oracle Cloud "Always Free" and Google Cloud's free
 tier also work, but both ask for a card at sign-up.
 
-#### Option C: a laptop on ZeroTier (free plan)
+#### Option C: a laptop on ZeroTier (optional fallback)
 
-What the campus demo used: create a ZeroTier network, have every PC join it, and run 4.4 with
+Not needed any more; keep it as a backup if the tunnels are down. What the campus demo used: create a ZeroTier network, have every PC join it, and run 4.4 with
 `MY_IP` set to the laptop's ZeroTier address. Phones join ZeroTier too, and the relay at
 `<MY_IP>:30300` carries their audits and uploads. Good for a room; everyone must install ZeroTier
 and be approved on the network.
