@@ -171,10 +171,11 @@ private fun AdvertisedAddressPanel(status: NetworkStatus, coordinatorUrl: String
             return@PixelPanel
         }
         Text("Advertised to the network: ${picked.address} " + if (picked.isVpn) "(ZeroTier)" else "(Wi-Fi / local network)")
-        if (picked.isVpn && relay != null) {
+        if (relay != null) {
+            // Works on any network: a coordinator in the cloud, a home router, mobile data or ZeroTier.
             Text(
-                "Android does not deliver incoming ZeroTier connections to apps, so audits and file uploads reach " +
-                    "this phone through the relay at $relay. Run `go run ./cmd/relay` on that machine.",
+                "Audits and file uploads reach this phone through the relay at $relay, so it works from any " +
+                    "network. The coordinator runs the relay (`go run ./cmd/relay`).",
                 color = PixelColors.Good,
             )
         } else if (picked.isVpn) {
@@ -184,7 +185,11 @@ private fun AdvertisedAddressPanel(status: NetworkStatus, coordinatorUrl: String
                 color = PixelColors.Bad,
             )
         } else {
-            Text("Same network as the coordinator: audits and uploads can reach this phone.", color = PixelColors.Good)
+            Text(
+                "The relay is off, so audits and uploads reach this phone only if the coordinator is on the same " +
+                    "Wi-Fi. Leave the relay empty to use the coordinator's.",
+                color = PixelColors.Gold,
+            )
         }
     }
 }
