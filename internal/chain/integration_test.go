@@ -283,6 +283,9 @@ func TestAgainstALocalChain(t *testing.T) {
 	})
 
 	t.Run("anchor an audit root", func(t *testing.T) {
+		if got, err := anchor.Coordinator(ctx); err != nil || got != coordKey.Address() {
+			t.Fatalf("anchor coordinator = %v, %v", got, err)
+		}
 		ok := receiptOK(t)
 		root := mustRoot(t)
 		ok(anchor.Publish(ctx, 1, root, 8))

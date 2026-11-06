@@ -14,6 +14,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/vyomanaut-labs/Vyomanaut_V2/internal/anchor"
 	"github.com/vyomanaut-labs/Vyomanaut_V2/internal/chain"
 	"github.com/vyomanaut-labs/Vyomanaut_V2/internal/chainsettle"
 	"github.com/vyomanaut-labs/Vyomanaut_V2/internal/metrics"
@@ -48,8 +49,17 @@ func startChainSettlement(ctx context.Context, d extensionDeps) error {
 
 func runChainSettlement(ctx context.Context, d extensionDeps, cfg chainSettings, key *chain.Key) {
 	rpc := chain.NewRPC(cfg.RPCURL, chainRPCTimeout)
+	// One Sender serves settlement and anchoring: both sign with the
+	// coordinator wallet, and the Sender keeps the nonce count.
+	sender := connectSender(ctx, rpc, key, cfg)
+	if sender == nil {
+		return // the context ended while waiting for the node
+	}
+	if cfg.anchoring() {
+		go runChainAnchoring(ctx, d, cfg, rpc, sender)
+	}
 	for {
-		svc, err := buildChainService(ctx, d, cfg, key, rpc)
+		svc, err := buildChainService(ctx, d, cfg, sender, rpc)
 		if err == nil {
 			log.Printf("[CHAIN] settlement running: endpoint %s, escrow %s, coordinator wallet %s",
 				cfg.rpcHost(), cfg.Escrow, key.Address())
@@ -57,33 +67,92 @@ func runChainSettlement(ctx context.Context, d extensionDeps, cfg chainSettings,
 			return
 		}
 		log.Printf("[CHAIN] cannot start yet (retrying): %v", err)
-		select {
-		case <-ctx.Done():
+		if !sleepCtx(ctx, chainStartRetry) {
 			return
-		case <-time.After(chainStartRetry):
 		}
 	}
 }
 
-func buildChainService(ctx context.Context, d extensionDeps, cfg chainSettings, key *chain.Key, rpc *chain.RPC) (*chainsettle.Service, error) {
-	sender, err := chain.NewSender(ctx, rpc, key)
-	if err != nil {
-		return nil, err
+// connectSender waits until the node answers and, when asked, is the chain the
+// operator expected.
+func connectSender(ctx context.Context, rpc *chain.RPC, key *chain.Key, cfg chainSettings) *chain.Sender {
+	for {
+		sender, err := chain.NewSender(ctx, rpc, key)
+		if err == nil && cfg.ChainID != 0 && sender.ChainID() != cfg.ChainID {
+			err = fmt.Errorf("the node reports chain %d but %s is %d", sender.ChainID(), envChainChainID, cfg.ChainID)
+		}
+		if err == nil {
+			return sender
+		}
+		log.Printf("[CHAIN] cannot start yet (retrying): %v", err)
+		if !sleepCtx(ctx, chainStartRetry) {
+			return nil
+		}
 	}
-	if cfg.ChainID != 0 && sender.ChainID() != cfg.ChainID {
-		return nil, fmt.Errorf("the node reports chain %d but %s is %d", sender.ChainID(), envChainChainID, cfg.ChainID)
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(d):
+		return true
 	}
+}
+
+func buildChainService(ctx context.Context, d extensionDeps, cfg chainSettings, sender *chain.Sender, rpc *chain.RPC) (*chainsettle.Service, error) {
 	escrow := chain.NewEscrowContract(cfg.Escrow, rpc, sender)
 	if coord, err := escrow.Coordinator(ctx); err != nil {
 		return nil, fmt.Errorf("read the escrow's coordinator: %w", err)
-	} else if coord != key.Address() {
+	} else if coord != sender.Address() {
 		log.Printf("[CHAIN] WARNING: this key (%s) is not the escrow's coordinator (%s); posting periods will be rejected",
-			key.Address(), coord)
+			sender.Address(), coord)
 	}
 	return chainsettle.New(d.DB, escrow, rpc, chainsettle.Config{
 		MicroPerPaise: cfg.MicroPerPaise, Confirmations: cfg.Confirmations, StartBlock: cfg.StartBlock,
 		PollInterval: cfg.Poll, SettleLag: cfg.SettleLag,
 	}, chainsettle.WithObserver(chainObserver{}))
+}
+
+// runChainAnchoring publishes a fingerprint of the audit history. It is
+// independent of settlement: either can be down while the other works.
+func runChainAnchoring(ctx context.Context, d extensionDeps, cfg chainSettings, rpc *chain.RPC, sender *chain.Sender) {
+	contract := chain.NewAnchorContract(cfg.Anchor, rpc, sender)
+	for {
+		coord, err := anchorCoordinator(ctx, rpc, cfg.Anchor)
+		if err == nil {
+			if coord != sender.Address() {
+				log.Printf("[ANCHOR] WARNING: this key (%s) is not the anchor's coordinator (%s); anchors will be rejected",
+					sender.Address(), coord)
+			}
+			break
+		}
+		log.Printf("[ANCHOR] cannot start yet (retrying): %v", err)
+		if !sleepCtx(ctx, chainStartRetry) {
+			return
+		}
+	}
+	svc, err := anchor.New(d.DB, contract, anchor.Config{
+		Interval: cfg.AnchorInterval, MaxLeaves: cfg.AnchorMaxLeaves,
+	}, anchor.WithObserver(anchorObserver{}))
+	if err != nil {
+		log.Printf("[ANCHOR] not started: %v", err)
+		return
+	}
+	log.Printf("[ANCHOR] anchoring running: anchor contract %s, every %s", cfg.Anchor, anchorEvery(cfg))
+	svc.Run(ctx)
+}
+
+func anchorEvery(cfg chainSettings) time.Duration {
+	if cfg.AnchorInterval == 0 {
+		return anchor.DefaultInterval
+	}
+	return cfg.AnchorInterval
+}
+
+// anchorCoordinator reads the coordinator address of an AuditAnchor.
+func anchorCoordinator(ctx context.Context, rpc *chain.RPC, addr chain.Address) (chain.Address, error) {
+	return chain.NewAnchorContract(addr, rpc, nil).Coordinator(ctx)
 }
 
 // chainObserver feeds settlement events into Prometheus.
@@ -105,3 +174,17 @@ func (chainObserver) PeriodClaimed(micro int64) {
 func (chainObserver) PeriodFailed(string)     { metrics.ChainPeriodsTotal.WithLabelValues("failed").Inc() }
 func (chainObserver) UnboundReleases(n int64) { metrics.ChainUnboundReleases.Set(float64(n)) }
 func (chainObserver) StepError(step string)   { metrics.ChainStepErrorsTotal.WithLabelValues(step).Inc() }
+
+// anchorObserver feeds anchoring events into Prometheus.
+type anchorObserver struct{}
+
+func (anchorObserver) EpochReserved(int) { metrics.ChainAnchorsTotal.WithLabelValues("reserved").Inc() }
+func (anchorObserver) EpochAnchored(epoch uint64, leaves int) {
+	metrics.ChainAnchorsTotal.WithLabelValues("anchored").Inc()
+	metrics.ChainAnchoredReceiptsTotal.Add(float64(leaves))
+	metrics.ChainLastAnchoredEpoch.Set(float64(epoch))
+}
+func (anchorObserver) EpochFailed(string) { metrics.ChainAnchorsTotal.WithLabelValues("failed").Inc() }
+func (anchorObserver) StepError(step string) {
+	metrics.ChainStepErrorsTotal.WithLabelValues("anchor-" + step).Inc()
+}

@@ -104,6 +104,15 @@ func (a *AnchorContract) Roots(ctx context.Context, epoch uint64) (AnchorRecord,
 	return rec, err
 }
 
+// Coordinator returns the only address allowed to publish roots.
+func (a *AnchorContract) Coordinator(ctx context.Context) (Address, error) {
+	out, err := callView(ctx, a.rpc, a.addr, "coordinator()")
+	if err != nil {
+		return Address{}, err
+	}
+	return abiReader{out}.address(0)
+}
+
 // Publish anchors root for epoch. Only the coordinator key can do this.
 func (a *AnchorContract) Publish(ctx context.Context, epoch uint64, root [hashLen]byte, leafCount uint32) (*Receipt, error) {
 	return send(ctx, a.s, a.addr, "anchor(uint64,bytes32,uint32)",

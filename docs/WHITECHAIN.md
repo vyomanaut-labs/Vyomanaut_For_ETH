@@ -45,9 +45,28 @@ repair or the ledger: if the chain is unreachable it retries in the background.
 | `VYOMANAUT_CHAIN_CONFIRMATIONS` | optional, default 2 blocks |
 | `VYOMANAUT_CHAIN_POLL_SECONDS` | optional, default 10 |
 | `VYOMANAUT_CHAIN_SETTLE_LAG_SECONDS` | optional, default 20 |
+| `VYOMANAUT_CHAIN_ANCHOR_ADDRESS` | the `AuditAnchor` address; audit anchoring is off unless this is set |
+| `VYOMANAUT_CHAIN_ANCHOR_INTERVAL_SECONDS` | optional, default 600 |
+| `VYOMANAUT_CHAIN_ANCHOR_MAX_LEAVES` | optional, default 20000 receipts per epoch |
 
 The coordinator wallet needs a little WBT for gas. Migration
 `migrations/002_whitechain.sql` is applied by `scripts/demo/up.sh`.
+
+## Anchoring the audit history
+
+Every interval the coordinator takes the finished audit receipts it has not yet
+anchored, builds one Merkle root over them (the shared leaf and tree rules in
+`internal/receiptleaf`) and writes that 32-byte root and the receipt count to the
+`AuditAnchor` contract as the next epoch. Receipts stay in the database.
+
+Once an epoch is on chain the operator cannot rewrite, drop or add a receipt
+inside it without the rebuilt root changing.
+
+An epoch is reserved in the database with its root and exact range before it is
+sent, and the chain is asked whether the epoch is already there before every
+send, so a lost reply is adopted rather than repeated. Epoch numbers follow the
+chain, so they keep rising across database resets. A failed epoch leaves the
+next one starting from the same place.
 
 ## Binding wallets
 

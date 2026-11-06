@@ -52,4 +52,23 @@ var (
 		Name: "vyomanaut_chain_step_errors_total",
 		Help: "Total number of failed settlement steps by step name.",
 	}, []string{"step"})
+
+	// ChainAnchorsTotal counts audit-history epochs by the state they reached
+	// (reserved, anchored, failed).
+	ChainAnchorsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "vyomanaut_chain_anchors_total",
+		Help: "Total number of audit-history anchor epochs by the state they reached.",
+	}, []string{"state"})
+
+	// ChainAnchoredReceiptsTotal counts audit receipts covered by an anchored epoch.
+	ChainAnchoredReceiptsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "vyomanaut_chain_anchored_receipts_total",
+		Help: "Total number of audit receipts covered by an anchored epoch.",
+	})
+
+	// ChainLastAnchoredEpoch is the newest epoch this coordinator anchored.
+	ChainLastAnchoredEpoch = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "vyomanaut_chain_last_anchored_epoch",
+		Help: "Newest audit-history epoch anchored on chain.",
+	})
 )

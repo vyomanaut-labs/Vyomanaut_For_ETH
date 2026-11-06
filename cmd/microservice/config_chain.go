@@ -28,6 +28,11 @@ const (
 	envChainConfirmations = "VYOMANAUT_CHAIN_CONFIRMATIONS"
 	envChainPollSeconds   = "VYOMANAUT_CHAIN_POLL_SECONDS"
 	envChainSettleLagSecs = "VYOMANAUT_CHAIN_SETTLE_LAG_SECONDS"
+
+	// Audit anchoring is off unless an AuditAnchor address is given.
+	envChainAnchor            = "VYOMANAUT_CHAIN_ANCHOR_ADDRESS"
+	envChainAnchorIntervalSec = "VYOMANAUT_CHAIN_ANCHOR_INTERVAL_SECONDS"
+	envChainAnchorMaxLeaves   = "VYOMANAUT_CHAIN_ANCHOR_MAX_LEAVES"
 )
 
 var errChainConfig = errors.New("chain settings")
@@ -44,7 +49,15 @@ type chainSettings struct {
 	Confirmations uint64
 	Poll          time.Duration
 	SettleLag     time.Duration
+
+	// Audit anchoring. A zero Anchor address leaves it off.
+	Anchor          chain.Address
+	AnchorInterval  time.Duration
+	AnchorMaxLeaves int
 }
+
+// anchoring reports whether audit anchoring was asked for.
+func (c chainSettings) anchoring() bool { return !c.Anchor.IsZero() }
 
 // rpcHost is the endpoint's host name, safe to print.
 func (c chainSettings) rpcHost() string {
@@ -114,21 +127,30 @@ func chainSettingsFromEnv(getenv func(string) string) (chainSettings, error) {
 		*dst = n
 		return nil
 	}
-	var micro, poll, lag uint64
+	var micro, poll, lag, anchorEvery, anchorMax uint64
 	for name, dst := range map[string]*uint64{
 		envChainChainID: &c.ChainID, envChainConfirmations: &c.Confirmations,
 		envChainMicroPerPaise: &micro, envChainPollSeconds: &poll, envChainSettleLagSecs: &lag,
+		envChainAnchorIntervalSec: &anchorEvery, envChainAnchorMaxLeaves: &anchorMax,
 	} {
 		if err := optionalUint(name, dst); err != nil {
 			return c, err
 		}
 	}
 	const maxInt = 1 << 62
-	if micro > maxInt || poll > maxInt || lag > maxInt {
+	if micro > maxInt || poll > maxInt || lag > maxInt || anchorEvery > maxInt || anchorMax > maxInt {
 		return c, fmt.Errorf("%w: a numeric setting is out of range", errChainConfig)
 	}
 	c.MicroPerPaise = int64(micro)
 	c.Poll = time.Duration(poll) * time.Second
 	c.SettleLag = time.Duration(lag) * time.Second
+	c.AnchorInterval = time.Duration(anchorEvery) * time.Second
+	c.AnchorMaxLeaves = int(anchorMax)
+
+	if v := strings.TrimSpace(getenv(envChainAnchor)); v != "" {
+		if c.Anchor, err = chain.ParseAddress(v); err != nil {
+			return c, fmt.Errorf("%w: %s is not an address", errChainConfig, envChainAnchor)
+		}
+	}
 	return c, nil
 }

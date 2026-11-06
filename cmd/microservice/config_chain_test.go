@@ -106,3 +106,33 @@ func TestRPCHostHidesThePathAndAnyKeyInIt(t *testing.T) {
 		t.Fatalf("host = %q", h)
 	}
 }
+
+func TestAnchoringIsOffUnlessAnAddressIsGiven(t *testing.T) {
+	c, err := chainSettingsFromEnv(env(validChainEnv()))
+	if err != nil || c.anchoring() {
+		t.Fatalf("anchoring=%v err=%v; want off", c.anchoring(), err)
+	}
+}
+
+func TestAnchoringSettingsAreRead(t *testing.T) {
+	m := validChainEnv()
+	m[envChainAnchor] = "0x1b2b623ecA0A7899C6a24eaf401a99d2434FDB3d"
+	m[envChainAnchorIntervalSec] = "120"
+	m[envChainAnchorMaxLeaves] = "500"
+	c, err := chainSettingsFromEnv(env(m))
+	if err != nil || !c.anchoring() {
+		t.Fatalf("anchoring=%v err=%v", c.anchoring(), err)
+	}
+	if c.AnchorInterval != 120*time.Second || c.AnchorMaxLeaves != 500 {
+		t.Fatalf("settings = %+v", c)
+	}
+}
+
+func TestAnchoringRejectsAnAddressThatIsNotOne(t *testing.T) {
+	m := validChainEnv()
+	m[envChainAnchor] = "not-an-address"
+	_, err := chainSettingsFromEnv(env(m))
+	if !errors.Is(err, errChainConfig) || !strings.Contains(err.Error(), envChainAnchor) || strings.Contains(err.Error(), "not-an-address") {
+		t.Fatalf("err = %v; want a message naming the variable but not echoing the value", err)
+	}
+}
