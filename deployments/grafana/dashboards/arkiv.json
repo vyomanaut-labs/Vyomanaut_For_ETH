@@ -1,0 +1,345 @@
+{
+  "id": null,
+  "uid": "vyomanaut-arkiv",
+  "title": "Vyomanaut — Arkiv public mirror",
+  "description": "Arkiv mirror of audit receipts and file manifests (vyomanaut_arkiv_* metrics from internal/metrics/arkiv.go). Coordinator-side: start the coordinator with scripts/demo/up.sh --expose-metrics and VYOMANAUT_ARKIV_ENABLED=1.",
+  "tags": [
+    "vyomanaut",
+    "arkiv"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Audit receipts mirrored",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VYOMANAUT_PROMETHEUS_DATASOURCE_UID"
+      },
+      "description": "Audit receipts covered by confirmed Arkiv audit batches (vyomanaut_arkiv_items_published_total).",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(vyomanaut_arkiv_items_published_total{kind=\"audit_batch\"})",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Entities confirmed",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VYOMANAUT_PROMETHEUS_DATASOURCE_UID"
+      },
+      "description": "Arkiv entities created and confirmed on chain (vyomanaut_arkiv_publications_total).",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(vyomanaut_arkiv_publications_total{state=\"confirmed\"})",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 3,
+      "title": "Waiting to publish",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VYOMANAUT_PROMETHEUS_DATASOURCE_UID"
+      },
+      "description": "Queued or failed publications not yet confirmed (vyomanaut_arkiv_pending_publications). Should return to 0 after each period.",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "vyomanaut_arkiv_pending_publications",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 4,
+      "title": "Wallet balance (tGLM)",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VYOMANAUT_PROMETHEUS_DATASOURCE_UID"
+      },
+      "description": "Balance of the publisher wallet (vyomanaut_arkiv_wallet_balance_glm). Fund it at hub.arkiv.network.",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "vyomanaut_arkiv_wallet_balance_glm",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 4
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 5,
+      "title": "Entities by kind and state",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VYOMANAUT_PROMETHEUS_DATASOURCE_UID"
+      },
+      "description": "Entities reserved, confirmed or failed in the last 10 minutes (vyomanaut_arkiv_publications_total).",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(vyomanaut_arkiv_publications_total[10m])",
+          "legendFormat": "{{kind}} {{state}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 6,
+      "title": "Mirror lag",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VYOMANAUT_PROMETHEUS_DATASOURCE_UID"
+      },
+      "description": "Seconds between now and the point each stream has been queued up to (vyomanaut_arkiv_cursor_timestamp_seconds). Includes the 30-second settling lag and one audit period.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "time() - vyomanaut_arkiv_cursor_timestamp_seconds",
+          "legendFormat": "{{stream}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 7,
+      "title": "Fees paid (tGLM)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VYOMANAUT_PROMETHEUS_DATASOURCE_UID"
+      },
+      "description": "Cumulative fees for Arkiv creates in tGLM (vyomanaut_arkiv_fee_glm_total).",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 13
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "vyomanaut_arkiv_fee_glm_total",
+          "legendFormat": "fees"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 8,
+      "title": "Gas and payload",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VYOMANAUT_PROMETHEUS_DATASOURCE_UID"
+      },
+      "description": "Gas used per minute (vyomanaut_arkiv_gas_used_total). Body bytes per minute (vyomanaut_arkiv_payload_bytes_total).",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 13
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(vyomanaut_arkiv_gas_used_total[10m]) * 60",
+          "legendFormat": "gas per minute"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(vyomanaut_arkiv_payload_bytes_total[10m]) * 60",
+          "legendFormat": "body bytes per minute"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 9,
+      "title": "Publisher errors",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VYOMANAUT_PROMETHEUS_DATASOURCE_UID"
+      },
+      "description": "Failed publisher steps in the last 10 minutes (vyomanaut_arkiv_step_errors_total). Errors never affect uploads, audits or payments.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 13
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(vyomanaut_arkiv_step_errors_total[10m])",
+          "legendFormat": "{{step}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {}
+    }
+  ],
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  }
+}
