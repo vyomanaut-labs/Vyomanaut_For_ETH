@@ -9,7 +9,9 @@ brew install cloudflared bore-cli      # the two free tunnels (no account)
 git fetch && git switch vyomanaut_open_network && git pull
 ```
 
-Copy the `dist/` folder from the Windows laptop into the repo on the Mac (AirDrop or USB). It
+Copy the `dist/` folder from the Windows laptop into the repo on the Mac (AirDrop, USB or a ZIP).
+Unzip it in the repo root so the files sit at `Vyomanaut_For_ETH/dist/vyomanaut-provider-android.apk`,
+not `dist/dist/...`; check with `ls dist`. It
 holds the Android app and the laptop providers that the join page hands out. Without it, the
 downloads come from the GitHub release, which must then carry the **new** app (it opens from
 the QR link; the old one does not).
