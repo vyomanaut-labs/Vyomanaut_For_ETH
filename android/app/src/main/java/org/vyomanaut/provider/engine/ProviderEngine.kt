@@ -1,11 +1,14 @@
 package org.vyomanaut.provider.engine
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.vyomanaut.provider.network.OnboardingStore
+import org.vyomanaut.provider.service.ProviderController
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.Executors
@@ -192,6 +195,7 @@ object ProviderEngine {
     /** Stops the provider in the background and ends supervision. A Failed state is kept so the reason stays visible. */
     fun shutdown() {
         synchronized(this) {
+            if (keepRunning || process != null) appendLog("[APP] Provider stopped (Stop pressed, or the service ended).")
             keepRunning = false
             cancelScheduledRestart()
         }
@@ -218,8 +222,8 @@ object ProviderEngine {
             EngineConfigs.dataDir(ctx).deleteRecursively()
             EngineStore(ctx).clearRegistration()
             synchronized(this) {
-                setLog(emptyList())
-                appendLog("[APP] Registration reset. Register this phone again.")
+                // The log is kept on purpose: it shows why the phone had to register again.
+                appendLog("[APP] Registration reset: provider data deleted. Register this phone again.")
                 mutableState.value = EngineState.Idle
             }
         }
@@ -340,7 +344,7 @@ object ProviderEngine {
                 child.start(
                     args,
                     onOutput = { chunk -> handleOutput(myGeneration, chunk) },
-                    onExit = { code -> handleExit(myGeneration, store, config, isOnboarding, code) },
+                    onExit = { code -> handleExit(myGeneration, context, store, config, isOnboarding, code) },
                 )
             } catch (e: IOException) {
                 mutableState.value = EngineState.Failed("Cannot start the provider program: ${e.message}")
@@ -382,7 +386,14 @@ object ProviderEngine {
     }
 
     @Synchronized
-    private fun handleExit(forGeneration: Int, store: EngineStore, config: EngineConfig, isOnboarding: Boolean, code: Int) {
+    private fun handleExit(
+        forGeneration: Int,
+        context: Context,
+        store: EngineStore,
+        config: EngineConfig,
+        isOnboarding: Boolean,
+        code: Int,
+    ) {
         if (forGeneration != generation) return
         process = null
         when {
@@ -390,6 +401,11 @@ object ProviderEngine {
             isOnboarding && code == 0 -> {
                 store.markRegistered(config.coordinatorUrl)
                 mutableState.value = EngineState.Idle
+                // Registering starts the coordinator's clock: a provider that sends no heartbeat within the
+                // departure threshold (10 minutes in the demo) is marked departed. So start serving at once
+                // instead of waiting for the user to find the Start button.
+                appendLog("[APP] Registered. Starting the provider now so the coordinator sees this phone.")
+                Handler(Looper.getMainLooper()).post { ProviderController.start(context) }
             }
             isOnboarding && phoneTaken -> mutableState.value = EngineState.Failed(ProviderLogRules.PHONE_TAKEN_MESSAGE)
             isOnboarding -> mutableState.value =

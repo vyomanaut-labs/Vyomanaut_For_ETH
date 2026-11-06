@@ -143,7 +143,12 @@ fun HomeScreen() {
             }
         }
 
-        RegistrationPanel(binaryAvailable = binaryAvailable, registered = registered, engineState = engineState)
+        RegistrationPanel(
+            binaryAvailable = binaryAvailable,
+            registered = registered,
+            engineState = engineState,
+            checklistDone = missingSteps.isEmpty(),
+        )
 
         if (logLines.isNotEmpty()) {
             PixelPanel(title = "Provider output") {
@@ -197,6 +202,7 @@ private fun RegistrationPanel(
     binaryAvailable: Boolean,
     registered: Boolean,
     engineState: EngineState,
+    checklistDone: Boolean,
 ) {
     val context = LocalContext.current
     var otp by remember { mutableStateOf("") }
@@ -264,7 +270,12 @@ private fun RegistrationPanel(
 
             else -> {
                 Text("Register once so the coordinator admits this phone. Make sure the Network and Storage tabs are set up first.")
-                PixelButton(text = "Register this phone", onClick = {
+                // The provider starts right after registering, and the coordinator departs a phone that sends no
+                // heartbeat for 10 minutes, so the battery checklist must be done before registering, not after.
+                if (!checklistDone) {
+                    Text("Finish the \"Before you start\" checklist below first.", color = PixelColors.Gold)
+                }
+                PixelButton(text = "Register this phone", enabled = checklistDone, onClick = {
                     message = null
                     when (val result = EngineConfigs.fromDevice(context, requireRegistered = false)) {
                         is ConfigResult.Missing -> message = result.reason
