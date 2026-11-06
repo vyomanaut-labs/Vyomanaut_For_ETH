@@ -34,7 +34,7 @@ type Config struct {
 const (
 	defaultMicroPerPaise = 10
 	defaultConfirmations = 2
-	defaultLogChunk      = 2000
+	defaultLogChunk      = 900 // under the public RPC's ~1000-block eth_getLogs limit
 	defaultPoll          = 10 * time.Second
 	defaultSettleLag     = 20 * time.Second
 	defaultClaimMargin   = 3 * time.Second

@@ -7,6 +7,7 @@
   "guardian": "0xf4d6D323970cc80DC39461b29A272b34c4767cb9",
   "challengeWindowSeconds": 120,
   "silenceTimeoutSeconds": 900,
+  "deploymentBlock": 12326265,
   "auditAnchor": "0x1b2b623eca0a7899c6a24eaf401a99d2434fdb3d",
   "vyomaEscrow": "0xbce841c78c6c40c551fc223ba9415d4751af5958"
 }
