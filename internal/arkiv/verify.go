@@ -44,7 +44,7 @@ func (c *Client) ByKey(ctx context.Context, key common.Hash) (Entity, error) {
 }
 
 // KindQuery is the arkiv_query string that lists one kind of entity for one
-// app tag. NOT yet verified on chain (spike A0 only queried by key).
+// app tag. Verified on Rabdi on 2026-11-06 (it found the spike A0 entities).
 func KindQuery(appTag, kind string) string {
 	return fmt.Sprintf("app = str('%s') AND kind = str('%s')", quoteFree(appTag), quoteFree(kind))
 }

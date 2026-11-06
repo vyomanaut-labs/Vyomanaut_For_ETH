@@ -321,9 +321,8 @@ type queryResult struct {
 }
 
 // Query runs an arkiv_query and returns up to limit rows (1 to 100) with the
-// named attributes. The paging offset is sent as a hex string like limit; that
-// form has not been exercised on chain yet (spike A0 only used limit), so the
-// verifier session (A5) must confirm it before relying on it.
+// named attributes. The paging offset is sent as a hex string like limit;
+// verified on Rabdi on 2026-11-06 (offset 1 returned the next entity).
 func (c *Client) Query(ctx context.Context, query string, attrNames []string, limit, offset int) ([]Entity, error) {
 	if limit < 1 || limit > 100 {
 		return nil, fmt.Errorf("arkiv: query limit %d out of range 1..100", limit)

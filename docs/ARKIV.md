@@ -79,10 +79,9 @@ arkivcheck:  fetch entity by key ──► verify on its own ──► rebuild f
   it was true when published. A coordinator could publish false receipts; the
   provider signatures on PASS/FAIL make that detectable by the provider.
 - **Lifetime.** Entities expire (30 days by default, at most about 182 days).
-- **Query paging and attribute queries.** Fetching by entity key was verified on
-  chain. `arkivcheck public` uses an attribute query
-  (`app = str('…') AND kind = str('audit_batch')`) and the first page only;
-  that form has not been verified on Rabdi yet.
+- **Queries.** Fetching by entity key (spike A0), the attribute query
+  `app = str('…') AND kind = str('…')` and `offset` paging were all checked on
+  Rabdi. `arkivcheck public` reads the first page only (up to 100 entities).
 
 ## Running it
 

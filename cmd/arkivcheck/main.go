@@ -72,8 +72,7 @@ commands:
   files              verify the newest file manifests and tombstones against PostgreSQL
   entity <key>       fetch and verify one entity by its key
   public             find audit batches by attribute query and verify them
-                     (no database; the attribute query form is not yet
-                     verified on chain)
+                     (no database needed: anyone can run it)
 
 flags (each may also come from the environment):
   --rpc-url          Arkiv RPC endpoint            (VYOMANAUT_ARKIV_RPC_URL, default Rabdi)
