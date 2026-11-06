@@ -1,0 +1,19 @@
+# Machine-specific and generated files. local.properties holds the SDK path of one laptop.
+local.properties
+.gradle/
+.kotlin/
+.idea/
+.cxx/
+.externalNativeBuild/
+captures/
+build/
+*.iml
+*.apk
+*.aab
+
+# The Go provider binary is built from this repo by scripts/build_android_provider.ps1, never committed.
+app/src/main/jniLibs/
+
+# Signing material
+*.jks
+*.keystore
