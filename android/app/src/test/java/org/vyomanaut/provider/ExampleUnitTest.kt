@@ -1,4 +1,4 @@
-package com.example.eth_onchain_app
+package org.vyomanaut.provider
 
 import org.junit.Test
 

@@ -4,13 +4,13 @@ plugins {
 }
 
 android {
-    namespace = "com.example.eth_onchain_app"
+    namespace = "org.vyomanaut.provider"
     compileSdk {
         version = release(37)
     }
 
     defaultConfig {
-        applicationId = "com.example.eth_onchain_app"
+        applicationId = "org.vyomanaut.provider"
         minSdk = 26
         targetSdk = 37
         versionCode = 1

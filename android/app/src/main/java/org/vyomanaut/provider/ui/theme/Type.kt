@@ -1,4 +1,4 @@
-package com.example.eth_onchain_app.ui.theme
+package org.vyomanaut.provider.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle

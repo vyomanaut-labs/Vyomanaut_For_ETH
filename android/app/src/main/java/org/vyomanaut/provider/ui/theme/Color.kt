@@ -1,4 +1,4 @@
-package com.example.eth_onchain_app.ui.theme
+package org.vyomanaut.provider.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

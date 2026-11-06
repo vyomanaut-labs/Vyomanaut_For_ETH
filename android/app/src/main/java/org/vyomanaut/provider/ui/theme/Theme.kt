@@ -1,4 +1,4 @@
-package com.example.eth_onchain_app.ui.theme
+package org.vyomanaut.provider.ui.theme
 
 import android.app.Activity
 import android.os.Build
@@ -34,7 +34,7 @@ private val LightColorScheme = lightColorScheme(
 )
 
 @Composable
-fun Eth_onchain_appTheme(
+fun Vyomanaut_AppTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     // Dynamic color is available on Android 12+
     dynamicColor: Boolean = true,

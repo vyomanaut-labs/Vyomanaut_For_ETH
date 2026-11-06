@@ -22,6 +22,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Eth_onchain_app"
+rootProject.name = "Vyomanaut_Provider"
 include(":app")
  

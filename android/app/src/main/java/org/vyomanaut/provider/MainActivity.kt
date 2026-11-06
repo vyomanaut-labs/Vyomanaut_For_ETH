@@ -1,4 +1,4 @@
-package com.example.eth_onchain_app
+package org.vyomanaut.provider
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -11,14 +11,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
-import com.example.eth_onchain_app.ui.theme.Eth_onchain_appTheme
+import org.vyomanaut.provider.ui.theme.Vyomanaut_AppTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            Eth_onchain_appTheme {
+            Vyomanaut_AppTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     Greeting(
                         name = "Android",
@@ -41,7 +41,7 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
 @Preview(showBackground = true)
 @Composable
 fun GreetingPreview() {
-    Eth_onchain_appTheme {
+    Vyomanaut_AppTheme {
         Greeting("Android")
     }
 }
