@@ -1,0 +1,480 @@
+{
+  "id": null,
+  "uid": "vyomanaut-chain",
+  "title": "Vyomanaut — Whitechain settlement and audit anchoring",
+  "description": "On-chain payments and audit anchoring (vyomanaut_chain_* metrics from internal/metrics/chain.go). These are coordinator-side metrics: start the coordinator with scripts/demo/up.sh --expose-metrics and add its address to deployments/observability/targets/microservice.json, exactly as for the main dashboard. Nothing here changes what providers run or see.",
+  "tags": [
+    "vyomanaut",
+    "chain",
+    "whitechain"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "USDT deposited by owners",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VYOMANAUT_PROMETHEUS_DATASOURCE_UID"
+      },
+      "description": "Test USDT credited to owners' ledgers from on-chain deposits (vyomanaut_chain_deposit_credited_micro_total, micro-units / 1e6).",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "vyomanaut_chain_deposit_credited_micro_total / 1e6",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 2,
+      "title": "USDT paid to providers",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VYOMANAUT_PROMETHEUS_DATASOURCE_UID"
+      },
+      "description": "Test USDT sent to providers' wallets by claimed periods (vyomanaut_chain_paid_micro_total / 1e6).",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "vyomanaut_chain_paid_micro_total / 1e6",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 3,
+      "title": "Payout periods claimed",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VYOMANAUT_PROMETHEUS_DATASOURCE_UID"
+      },
+      "description": "Payout periods fully claimed (vyomanaut_chain_periods_total, state=claimed).",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "vyomanaut_chain_periods_total{state=\"claimed\"}",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 4,
+      "title": "Releases waiting for a wallet",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VYOMANAUT_PROMETHEUS_DATASOURCE_UID"
+      },
+      "description": "Ledger releases held back only because the provider has no payout wallet (vyomanaut_chain_unbound_releases). Should be 0 once wallets are assigned.",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "vyomanaut_chain_unbound_releases",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 5,
+      "title": "Payout periods by state",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VYOMANAUT_PROMETHEUS_DATASOURCE_UID"
+      },
+      "description": "Periods reserved, posted, claimed or failed in the last 10 minutes (vyomanaut_chain_periods_total).",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(vyomanaut_chain_periods_total[10m])",
+          "legendFormat": "{{state}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 6,
+      "title": "USDT moving",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VYOMANAUT_PROMETHEUS_DATASOURCE_UID"
+      },
+      "description": "Test USDT deposited and paid out in the last 10 minutes.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(vyomanaut_chain_deposit_credited_micro_total[10m]) / 1e6",
+          "legendFormat": "deposited"
+        },
+        {
+          "refId": "B",
+          "expr": "increase(vyomanaut_chain_paid_micro_total[10m]) / 1e6",
+          "legendFormat": "paid out"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 7,
+      "title": "Newest audit epoch anchored",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VYOMANAUT_PROMETHEUS_DATASOURCE_UID"
+      },
+      "description": "Newest audit-history epoch this coordinator anchored on chain (vyomanaut_chain_last_anchored_epoch).",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 13
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "vyomanaut_chain_last_anchored_epoch",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 8,
+      "title": "Audit receipts anchored",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VYOMANAUT_PROMETHEUS_DATASOURCE_UID"
+      },
+      "description": "Audit receipts covered by an anchored epoch (vyomanaut_chain_anchored_receipts_total).",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 13
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "vyomanaut_chain_anchored_receipts_total",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 9,
+      "title": "Last block scanned for deposits",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VYOMANAUT_PROMETHEUS_DATASOURCE_UID"
+      },
+      "description": "Highest block whose escrow deposit logs have been read (vyomanaut_chain_scanned_block). Should keep rising.",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 13
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "vyomanaut_chain_scanned_block",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 12,
+      "title": "Deposits seen on chain",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VYOMANAUT_PROMETHEUS_DATASOURCE_UID"
+      },
+      "description": "Escrow deposits the coordinator has recorded (vyomanaut_chain_deposits_recorded_total).",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 13
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "vyomanaut_chain_deposits_recorded_total",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 10,
+      "title": "Anchor epochs by state",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VYOMANAUT_PROMETHEUS_DATASOURCE_UID"
+      },
+      "description": "Audit-history epochs reserved, anchored or failed in the last 10 minutes (vyomanaut_chain_anchors_total).",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 18
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(vyomanaut_chain_anchors_total[10m])",
+          "legendFormat": "{{state}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 11,
+      "title": "Chain step errors",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VYOMANAUT_PROMETHEUS_DATASOURCE_UID"
+      },
+      "description": "Failed settlement or anchoring steps in the last 10 minutes (vyomanaut_chain_step_errors_total). A few during an RPC blip are normal; a steady stream means the chain is unreachable or the wallet is out of gas.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 18
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(vyomanaut_chain_step_errors_total[10m])",
+          "legendFormat": "{{step}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {}
+    }
+  ],
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  }
+}

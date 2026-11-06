@@ -1,12 +1,12 @@
 # Operator & Data Owner Guide — Whitechain payments (macOS)
 
 This guide adds one thing to `operator_unix_guide.md`: **real USDT payments on the Whitechain
-test network**. Read that guide first. Everything in it still works exactly the same. This
-page only covers what is new.
+test network, and a public fingerprint of the audit history**. Read that guide first.
+Everything in it still works exactly the same. This page only covers what is new.
 
 Two roles again, and they can be one Mac:
 
-- **Operator** — runs the coordinator, binds wallets, watches money move.
+- **Operator** — runs the coordinator, watches money move, runs the demos.
 - **Data owner** — puts USDT in, uploads a file, pays for storage.
 
 > **Providers do nothing new.** No wallet, no coins, no new command, no new question at
@@ -18,12 +18,20 @@ Two roles again, and they can be one Mac:
 ## Part 1 — What this adds, in plain words
 
 Before: the coordinator keeps a ledger (a list of who owes whom) and pays providers with
-pretend money. The providers have to *trust* the coordinator to pay them.
+pretend money. Providers have to *trust* the coordinator to pay them, and to keep an honest
+record of their audits.
 
-After: owners can put **real test USDT** into a **contract** (a small program that lives on a
-public blockchain and cannot be changed). The coordinator tells the contract "pay these
-providers this much". Once told, the contract pays — **even if the coordinator is switched
-off afterwards**.
+After, three new things:
+
+1. **Real test USDT.** Owners put USDT into a **contract** (a small program on a public
+   blockchain that nobody can change). The coordinator tells the contract "pay these
+   providers this much". Once told, the contract pays — **even if the coordinator is
+   switched off afterwards**.
+2. **A fingerprint of the audit history.** Every couple of minutes the coordinator writes one
+   short fingerprint of all new audit records to the blockchain. If anyone later changes an
+   old record, the fingerprint no longer matches, and a checker shows it.
+3. **Escape hatches.** Anyone can finish a posted payout. An owner can take back unspent
+   money after the coordinator has been silent for fifteen minutes.
 
 | Word | What it means here |
 | --- | --- |
@@ -34,24 +42,31 @@ off afterwards**.
 | **Period** | One batch of payouts, numbered 1, 2, 3… Each period is posted to the contract once. |
 | **Challenge window** | 120 seconds after posting. A separate "guardian" key can cancel a bad period in this time. After it, the payout is final. |
 | **Claim** | The step that actually sends USDT to a provider's wallet. **Anyone** can do it. The money always goes to the provider, never to whoever pressed the button. |
-| **Refund** | If the coordinator posts nothing for 900 seconds, owners can take their unspent USDT back. |
+| **Refund** | If the coordinator posts nothing for 900 seconds, anyone can send an owner's unspent USDT back to that owner. |
+| **Epoch** | One batch of audit records, summed into one fingerprint (a Merkle root) and written to the chain. |
 
 > The ledger is still the boss. The chain only follows it. If the chain is down, uploads,
-> audits and repair carry on, and the payouts catch up when it returns.
+> audits and repair carry on, and payouts and fingerprints catch up when it returns.
 
 ---
 
 ## Part 2 — Setup (new things only)
 
-### 2.1 What you need on top of the normal operator setup
+### 2.1 Tools
+
+Nothing to install beyond the normal operator setup. The new commands are small Go programs
+built from the repo:
 
 ```bash
-cast --version
+go build -o "$BIN_DIR/vyomachain"    ./cmd/vyomachain       # the owner / escape-hatch tool
+go build -o "$BIN_DIR/verifyreceipt" ./cmd/verifyreceipt    # the audit-history checker
 ```
 
-> `cast` is a small tool from Foundry that talks to the blockchain from the terminal. You
-> already used it for the first test deposit. If it is missing: `curl -L https://foundry.paradigm.xyz | bash`
-> then `foundryup`.
+> `$BIN_DIR` comes from `source /tmp/vyomanaut-demo/env` (Part 4 of the normal guide). The two
+> demo scripts below build these for you, so you only need this if you run them by hand.
+> Neither needs RocksDB.
+>
+> `cast` (Foundry) still works for reading the chain, but you no longer need it.
 
 ### 2.2 The three wallets
 
@@ -64,185 +79,179 @@ commit a key file.** Only the addresses below are safe to share.
 | Data owner (puts USDT in) | `0x7CBEe871deaDF21C3f8506283a2b96544b27FEb1` | `owner.key` | USDT and a little WBT |
 | Guardian (can cancel a period) | `0xf4d6D323970cc80DC39461b29A272b34c4767cb9` | `guardian.key` | a few cents of WBT, only if you demo a cancel |
 
-### 2.3 Check the balances
-
-Set these once per terminal:
+Check a wallet's gas, USDT and unspent escrow credit:
 
 ```bash
-export RPC="https://rpc.testnet.whitechain.io"
-export USDT="0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7"
-export ESCROW="0xBcE841C78c6c40C551fc223Ba9415D4751Af5958"
-export COORD_WALLET="0xc86553A4fC45352Bd79F1A45a0c338E598B49888"
-export OWNER_WALLET="0x7CBEe871deaDF21C3f8506283a2b96544b27FEb1"
+"$BIN_DIR/vyomachain" balance --address 0xc86553A4fC45352Bd79F1A45a0c338E598B49888
 ```
 
-Then:
-
-```bash
-cast balance "$COORD_WALLET" --rpc-url "$RPC" --ether
-cast balance "$OWNER_WALLET" --rpc-url "$RPC" --ether
-cast call "$USDT" "balanceOf(address)(uint256)" "$OWNER_WALLET" --rpc-url "$RPC"
-```
-
-> The first two are WBT. Anything above `0.01` is plenty for many runs. The third is USDT in
-> *millionths* — `110011323` means 110.011323 USDT.
-> Out of WBT? The faucet gives 2 WBT a day per GitHub account: <https://faucet.testnet.whitechain.io>
+> Needs the chain variables from Part 4 in the same terminal. `gas (WBT)` above `0.01` is plenty
+> for many runs. Out of WBT? The faucet gives 2 WBT a day per GitHub account:
+> <https://faucet.testnet.whitechain.io>
 
 ---
 
 ## Part 3 — Every command you will use
 
 ```bash
-# ── set once per terminal (see 2.3 for the first five) ───────────────────
-export OWNER_KEY_FILE="$HOME/vyoma-keys/owner.key"
-export EXPLORER="https://explorer.testnet.whitechain.io"
+# ── operator: once per terminal, before starting the network ─────────────
+eval "$(scripts/demo/chain_env.sh)"          # turns the chain features on for the coordinator
 
-# ── a helper to talk to the database (works in zsh and bash) ─────────────
-export PGPASSWORD=devpass
-db() { psql -h localhost -U vyomanaut_migrator -d vyomanaut_demo "$@"; }
+# ── operator: the demos ──────────────────────────────────────────────────
+scripts/demo/chain_tamper.sh                 # alter one audit record; the check catches it
+scripts/demo/chain_tamper.sh --restore       # put it back
+scripts/demo/chain_escape.sh                 # stop the coordinator; a stranger gets a provider paid
 
-# ── owner puts USDT in: two steps, "allow" then "deposit" ────────────────
-cast send "$USDT"   "approve(address,uint256)" "$ESCROW" 1000000 --rpc-url "$RPC" --private-key "$(cat "$OWNER_KEY_FILE")"
-cast send "$ESCROW" "deposit(uint256)"         1000000           --rpc-url "$RPC" --private-key "$(cat "$OWNER_KEY_FILE")"
+# ── operator: check the audit history against the chain ──────────────────
+"$BIN_DIR/verifyreceipt" list
+"$BIN_DIR/verifyreceipt" epoch latest
+"$BIN_DIR/verifyreceipt" receipt <receipt_id>
 
-# ── read the contract (free, changes nothing) ────────────────────────────
-cast call "$ESCROW" "credit(address)(uint256)" "$OWNER_WALLET" --rpc-url "$RPC"          # owner's unspent USDT inside
-cast call "$ESCROW" "lastPeriod()(uint64)" --rpc-url "$RPC"                              # newest period number
-cast call "$ESCROW" "periodInfo(uint64)(uint256,uint256,uint64,bool)" <period> --rpc-url "$RPC"
-cast call "$ESCROW" "allocationOf(uint64,address)(uint256)" <period> <wallet> --rpc-url "$RPC"
-cast call "$ESCROW" "refundableAt()(uint256)" --rpc-url "$RPC"                           # when a refund opens (unix time)
+# ── data owner ───────────────────────────────────────────────────────────
+vyomachain wallet bind    --api "http://<operator>:8090" --data-dir "$OWNER_DIR" --key-file ~/vyoma-keys/owner.key
+vyomachain deposit        --amount 1 --key-file ~/vyoma-keys/owner.key
+vyomachain balance        --address <wallet>
 
-# ── "the coordinator is gone" commands ───────────────────────────────────
-cast send "$ESCROW" "claim(uint64,address)" <period> <provider_wallet> --rpc-url "$RPC" --private-key "<any wallet with a little WBT>"
-cast send "$ESCROW" "refund(address)" "$OWNER_WALLET" --rpc-url "$RPC" --private-key "<any wallet with a little WBT>"
+# ── anyone, even with no coordinator ─────────────────────────────────────
+vyomachain period 3 --account <provider_wallet>
+vyomachain claim    --period 3 --account <provider_wallet> --key-file <any wallet with a little WBT>
+vyomachain refund   --owner <owner_wallet>                 --key-file <any wallet with a little WBT>
 ```
 
-> What the two-step deposit means: the first line says "the escrow may take up to 1 USDT
-> from me"; the second line makes it take 1 USDT. `1000000` is 1 USDT because USDT has six
-> decimals.
+> **Do not use `client deposit` in this flow.** That command adds pretend money to the ledger.
+> The ledger would then show more than the contract holds, and payouts would stall. Use
+> `vyomachain deposit` instead.
 >
-> **Do not use `client deposit` in this flow.** That command adds pretend money to the
-> ledger. The ledger would then show more than the contract holds, and payouts would stall.
+> `vyomachain` finds the chain from environment variables (`VYOMANAUT_CHAIN_RPC_URL`, and
+> either `VYOMANAUT_CHAIN_ESCROW_ADDRESS` or `VYOMANAUT_CHAIN_API_URL`). `chain_env.sh` sets the
+> first two, so on the operator's Mac it just works. On a separate owner machine see 6.1.
 
 ---
 
-## Part 4 — Start the network with Whitechain on
+## Part 4 — Start the network with the chain on
 
 Do Parts 1 to 4.3 of `operator_unix_guide.md` as usual (ZeroTier, CGO flags, Postgres,
 observability). Then, in the **same terminal** you will run `up.sh` in:
 
 ```bash
-export VYOMANAUT_CHAIN_ENABLED=1
-export VYOMANAUT_CHAIN_RPC_URL="$RPC"
-export VYOMANAUT_CHAIN_PRIVATE_KEY_FILE="$HOME/vyoma-keys/deployer.key"
-export VYOMANAUT_CHAIN_ESCROW_ADDRESS="$ESCROW"
-export VYOMANAUT_CHAIN_ID=1874
-export VYOMANAUT_CHAIN_START_BLOCK="$(cast block-number --rpc-url "$RPC")"
+eval "$(scripts/demo/chain_env.sh)"
 ```
 
-> Line by line: *turn it on; where the blockchain is; which key signs for the coordinator;
-> which contract; refuse to run on the wrong chain; and where to start reading deposits.*
+> It prints what it set. In plain words: *turn the chain on; where the blockchain is; which key
+> signs for the coordinator; which contracts; refuse to run on the wrong chain; where to start
+> reading deposits; turn audit anchoring on (every 2 minutes); open a small sign-up page for
+> owner wallets on port 8090; give providers a payout address automatically.*
 >
-> `START_BLOCK` is "right now". It means the coordinator ignores old deposits from earlier
-> runs. **Make your deposit after this line, never before.**
+> `START_BLOCK` is "right now", so old deposits from earlier runs are ignored. **Make your
+> deposit after this line, never before.**
+>
+> It never reads or prints a key, only the path. If `~/vyoma-keys/deployer.key` is somewhere
+> else, `export VYOMANAUT_CHAIN_PRIVATE_KEY_FILE=<path>` first.
 
 Then start the network exactly like the normal guide. For a practice run on one Mac:
 
 ```bash
 scripts/demo/down.sh
 rm -rf /tmp/vyomanaut-demo
-scripts/demo/up.sh --providers 7 --advertise-host "$MY_IP"
+scripts/demo/up.sh --providers 7 --advertise-host "$MY_IP" --expose-metrics
 ```
 
-> `--providers 7` starts seven **pretend-real** providers on this same Mac. They are separate
-> programs, not fakes, so the chain flow behaves exactly as with seven laptops. For the real
-> rehearsal use `--providers 0` and let machines join (Part 5 of the normal guide).
+> `--providers 7` starts seven providers on this same Mac. They are separate programs, not
+> fakes, so the chain flow behaves exactly as with seven laptops. For the real rehearsal use
+> `--providers 0` and let machines join (Part 5 of the normal guide). `--expose-metrics` lets
+> Grafana show the chain dashboard (Part 11).
 
-### 4.1 Check the chain part woke up
+### 4.1 Check everything woke up
 
 ```bash
-grep CHAIN /tmp/vyomanaut-demo/logs/microservice.log
+grep -E "CHAIN|ANCHOR|EXTENSION" /tmp/vyomanaut-demo/logs/microservice.log
 ```
 
-> You want exactly this kind of line, and no `WARNING`:
-> `[CHAIN] settlement running: endpoint rpc.testnet.whitechain.io, escrow 0xBcE8…, coordinator wallet 0xc865…`
+> You want these lines, and no `WARNING`:
 >
-> A line starting `[CHAIN] cannot start yet (retrying)` means it will keep trying — see
-> Part 11.
+> - `[EXTENSION] chain started`
+> - `[CHAIN] demo payout wallets: providers get an address derived from the coordinator's key (custodial)`
+> - `[CHAIN] settlement running: endpoint rpc.testnet.whitechain.io, escrow 0xBcE8…, coordinator wallet 0xc865…`
+> - `[ANCHOR] anchoring running: anchor contract 0x1b2b…, every 2m0s`
+> - `[CHAIN] chain API listening on :8090 …`
+> - `[CHAIN] assigned demo payout wallets to N provider(s)` (once providers appear)
+>
+> `[CHAIN] cannot start yet (retrying)` means it keeps trying — see Part 12.
 
 Leave this open in its own window for the rest of the guide:
 
 ```bash
-tail -f /tmp/vyomanaut-demo/logs/microservice.log | grep CHAIN
+tail -f /tmp/vyomanaut-demo/logs/microservice.log | grep -E "CHAIN|ANCHOR"
 ```
 
 ---
 
-## Part 5 — Tell the coordinator which wallet is whose
+## Part 5 — Providers get wallets by themselves
 
-The coordinator needs to know which wallet belongs to which owner and provider. For now this
-is two small database commands. (A friendlier command is planned; nothing here is hard.)
-
-### 5.1 The owner
-
-Register the owner as in Part 6 of the normal guide. Then:
+Nothing to do. As each provider appears, the coordinator gives it a **payout address** it
+derives from its own secret. See who got what:
 
 ```bash
-db -c "SELECT owner_id, phone_number FROM owners;"
+export PGPASSWORD=devpass
+psql -h localhost -U vyomanaut_migrator -d vyomanaut_demo -c "SELECT p.phone_number, '0x'||encode(a.wallet,'hex') AS wallet FROM provider_payout_addresses a JOIN providers p USING (provider_id) ORDER BY 1;"
 ```
 
-Copy the `owner_id`, then:
-
-```bash
-db -c "INSERT INTO owner_wallets (owner_id, wallet) VALUES ('<owner_id>', decode(substr('$OWNER_WALLET', 3), 'hex'));"
-```
-
-> `substr(…, 3)` chops off the `0x`; `decode` turns the rest into raw bytes. You should see
-> `INSERT 0 1`.
-
-### 5.2 The providers
-
-Wait until providers show `ACTIVE` on the console. Then, one command binds **all** of them:
-
-```bash
-db -At -c "SELECT provider_id FROM providers WHERE status = 'ACTIVE';" | while read PID; do
-  ADDR="$(cast wallet new | awk '/^Address/ {print $2}')"
-  db -c "INSERT INTO provider_payout_addresses (provider_id, wallet) VALUES ('$PID', decode(substr('$ADDR', 3), 'hex')) ON CONFLICT (provider_id) DO NOTHING;"
-done
-```
-
-> What this does: for every active provider it makes a **brand-new demo wallet address** and
-> records it as that provider's payout address. We throw the secret key away on purpose. We
-> only need the address, so we can watch money arrive on the explorer.
+> **Be honest about this on stage:** in the demo, these wallets are **custodial**. The
+> coordinator can reproduce their keys, so the provider never touches a wallet. A real provider
+> would bring their own address. The money still arrives at that address on the blockchain,
+> and you can open it on the explorer.
 >
-> **Be honest about this on stage:** in the demo, these are addresses the operator picked
-> for the providers. In a real network each provider would bring their own wallet.
->
-> Safe to run again after more machines join — providers already bound are skipped.
-
-See who got what:
-
-```bash
-db -c "SELECT p.phone_number, '0x'||encode(a.wallet,'hex') AS wallet FROM provider_payout_addresses a JOIN providers p USING (provider_id) ORDER BY 1;"
-```
-
-> A provider with no wallet is not blocked. Its earnings simply wait until you bind one.
+> A provider with no wallet is not blocked. Its earnings simply wait until it has one.
 
 ---
 
 ## Part 6 — The owner puts USDT in
 
-Set the owner's side first (`MSURL`, `OWNER_DIR`, as in the normal guide). Then deposit 1 USDT
-with the two `cast send` commands from Part 3.
+### 6.1 Set up (owner's side)
 
-Each command prints a `transactionHash`. Keep both. Open:
+On the operator's Mac, the variables from Part 4 are already set. On a **separate owner
+machine**:
 
+```bash
+export VYOMANAUT_CHAIN_RPC_URL="https://rpc.testnet.whitechain.io"
+export VYOMANAUT_CHAIN_API_URL="http://<operator's 10.x address>:8090"
+go build -o vyomachain ./cmd/vyomachain
 ```
-https://explorer.testnet.whitechain.io/tx/<transactionHash>
+
+> The second line is the small sign-up page from Part 4. It tells `vyomachain` which contracts
+> the coordinator uses, so the owner needs no addresses.
+
+### 6.2 Register, then bind a wallet
+
+Register the owner as in Part 6 of the normal guide. Then connect a wallet to that owner:
+
+```bash
+"$BIN_DIR/vyomachain" wallet bind --api "http://$MY_IP:8090" --data-dir "$OWNER_DIR" --key-file ~/vyoma-keys/owner.key
 ```
 
-> **This is a qualifying link** for the Whitechain prize: a USDT payment made on Whitechain
-> in the main flow. Save the link for the README.
+> What this does: it signs a short sentence with the wallet — "this owner, this wallet, this
+> chain" — to prove the owner really holds the wallet, and sends it with the owner's normal
+> login. The coordinator checks both. A stranger cannot attach a wallet to someone else's
+> account, and nobody can claim a wallet they do not control. You should see `bound: 0x7CBE…`.
+>
+> Want a fresh wallet instead? `vyomachain wallet new --out ~/vyoma-keys/me.key` makes one (it
+> never overwrites a key). It then needs USDT and a little WBT before it can deposit.
+>
+> One wallet per owner, and a wallet belongs to one owner. A second, different wallet for the
+> same owner is refused on purpose.
+
+### 6.3 Deposit
+
+```bash
+"$BIN_DIR/vyomachain" deposit --amount 1 --key-file ~/vyoma-keys/owner.key
+```
+
+> It checks the wallet holds enough, asks the USDT to allow the escrow to take it (only the
+> first time), then deposits. It prints two links. Open the `deposited` one:
+> `https://explorer.testnet.whitechain.io/tx/0x…` — **this is a qualifying link** for the
+> Whitechain prize: a USDT payment on Whitechain in the main flow. Save it for the README.
+>
+> `1` USDT is `₹1,000` at demo scale. Too little USDT stops it before any fee is spent.
 
 Within about 30 seconds the coordinator window shows:
 
@@ -250,22 +259,19 @@ Within about 30 seconds the coordinator window shows:
 [CHAIN] credited 100000 paise to owner <id> for an on-chain deposit of 1000000 micro-units
 ```
 
-Check from the owner's side:
-
 ```bash
 "$BIN_DIR/client" balance --mode=demo --microservice-url="$MSURL" --data-dir="$OWNER_DIR"
 ```
 
-> Expect ₹1,000 (`100000` paise). The wait is two blocks of safety plus the ten-second check
-> cycle. Nothing is stuck.
+> Expect ₹1,000. The wait is two blocks of safety plus the ten-second check cycle.
 
 ---
 
 ## Part 7 — Upload and watch the money move
 
-Upload a plain text file as in Part 6.4 of the normal guide. Then just watch the `[CHAIN]`
-window. The journey takes roughly **eight to ten minutes** in the demo, because of the
-two-minute charge and release timers and the one-minute hold:
+Upload a plain text file as in Part 6.4 of the normal guide. Then watch the `[CHAIN]` window.
+The journey takes roughly **eight to ten minutes** in the demo, because of the two-minute
+charge and release timers and the one-minute hold:
 
 | Step | You will see | What it means |
 | --- | --- | --- |
@@ -273,183 +279,196 @@ two-minute charge and release timers and the one-minute hold:
 | 2 | `period 1 posted, claimable at <time>` | The list is now **on the blockchain**. The 120-second window has started. |
 | 3 | `period 1 claimed: N payees paid` | USDT was sent to each provider wallet. |
 
-Check the periods:
-
 ```bash
-db -c "SELECT period, status, total_micro, '0x'||encode(post_tx,'hex') AS post_tx, '0x'||encode(claim_tx,'hex') AS claim_tx FROM chain_periods ORDER BY period;"
+"$BIN_DIR/vyomachain" period 1
+"$BIN_DIR/vyomachain" balance --address <a provider wallet from Part 5>
 ```
 
-> `RESERVED → POSTED → CLAIMED`. Paste `post_tx` or `claim_tx` after `…/tx/` in the explorer
-> link to see the transaction. On a provider's wallet page, open the **Token transfers** tab
-> to see the USDT arrive.
-
-See any provider's USDT balance:
-
-```bash
-cast call "$USDT" "balanceOf(address)(uint256)" <provider_wallet> --rpc-url "$RPC"
-```
-
-> The provider laptop shows nothing different. Its owner will not notice a thing, which is
-> the point.
+> `period 1` shows its total, what is still unclaimed, and whether the window is open. On a
+> provider's wallet page on the explorer, open **Token transfers** to see the USDT arrive.
+> The provider laptop shows nothing different. Its owner will not notice a thing, which is the
+> point.
 
 ---
 
-## Part 8 — The big moment: the coordinator disappears
+## Part 8 — The audit fingerprint, and catching a cheat
 
-This is the demonstration that matters. It shows: **once a payout is posted, it will be paid
-even if we are gone.**
+While audits run, every two minutes you will see:
 
-You need a fresh period, so upload another small file and wait for step 2 of Part 7.
-
-**1. The moment you see `period N posted`, stop the coordinator.** You have about two
-minutes, because the coordinator would otherwise claim by itself.
-
-```bash
-kill "$(head -n1 /tmp/vyomanaut-demo/pids)"
+```
+[ANCHOR] reserved epoch 1: 142 receipts
+[ANCHOR] epoch 1 anchored: 142 receipts, root 6e4a19eb…
 ```
 
-> The first line of that file is the coordinator's own process. This stops **only** the
-> coordinator, not Postgres and not the providers. Do not use `down.sh` here.
-
-Prove it is gone:
+Check the database against the chain:
 
 ```bash
-curl -s -o /dev/null -w "%{http_code}\n" "http://127.0.0.1:8080/api/v1/admin/readiness"
+"$BIN_DIR/verifyreceipt" list
+"$BIN_DIR/verifyreceipt" epoch latest
 ```
 
-> Expect `000` (no answer).
+> `list` shows every epoch the coordinator wrote. `epoch latest` rebuilds the fingerprint from the
+> database and compares it with the one **read from the blockchain**, never through the
+> coordinator. You want `RESULT : MATCH`. It also says how final the write is: *soft* means
+> the Whitechain operator confirmed it; *finalized* means it has settled on Ethereum.
+>
+> It needs the chain variables from Part 4 and the database password:
+> `export PGUSER=vyomanaut_app PGPASSWORD=devpass` first (`chain_tamper.sh` does this for you).
 
-**2. Look up who is owed.** A stranger would read this from the contract's `Allocated`
-events on the explorer. For speed, read it from our database:
+### 8.1 The tamper demo
 
 ```bash
-export PERIOD=<N>
-db -At -c "SELECT '0x'||encode(wallet,'hex'), amount_micro FROM chain_period_payouts WHERE period = $PERIOD;"
+scripts/demo/chain_tamper.sh
 ```
 
-Confirm the contract itself agrees:
+> Three steps, printed one after another: the honest history **matches**; then one stored audit
+> record is changed the way an operator with database access could; then the same check now says
+> `RESULT : MISMATCH`. The script exits only when it has proven the change is caught.
+>
+> Put it back with `scripts/demo/chain_tamper.sh --restore`, so you can repeat the demo.
+>
+> Be straight about what this proves: that records **already anchored** cannot be quietly
+> changed. It does not prove a record was ever written. That is what each provider's own
+> signature on a PASS is for.
+
+---
+
+## Part 9 — The big moment: the coordinator disappears
+
+This shows: **once a payout is posted, it will be paid even if we are gone.**
+
+Upload another small file and wait for `period N posted` in the `[CHAIN]` window. Then, within
+about two minutes (the coordinator would otherwise claim by itself):
 
 ```bash
-cast call "$ESCROW" "allocationOf(uint64,address)(uint256)" "$PERIOD" <provider_wallet> --rpc-url "$RPC"
+scripts/demo/chain_escape.sh
 ```
 
-**3. Wait for the window to end** (the time printed in the `posted` line). Trying early is
-harmless; it just fails with `WindowStillOpen`.
+> It does the whole demo, narrating each step:
+>
+> 1. **Stops only the coordinator.** Not Postgres, not the providers.
+> 2. **Waits for the 120-second window to end.**
+> 3. **A stranger claims.** It uses `~/vyoma-keys/owner.key` as "any wallet with a little WBT"
+>    (override with `ESCAPE_KEY_FILE`). The money goes to the providers' wallets, not to the
+>    stranger.
+> 4. **Shows each provider's USDT balance.**
+>
+> Try it without doing anything first: `scripts/demo/chain_escape.sh --dry`.
+>
+> On the explorer, the `Claimed` event lists **two** addresses: the *account* (the provider,
+> who got the money) and the *caller* (the stranger, who paid the small fee). They differ. That
+> is the whole story on one screen.
 
-**4. A bystander claims.** Any wallet with a little WBT works. We use the owner's, because to
-the provider it is a stranger:
+By hand, the same thing:
 
 ```bash
-cast send "$ESCROW" "claim(uint64,address)" "$PERIOD" <provider_wallet> --rpc-url "$RPC" --private-key "$(cat "$OWNER_KEY_FILE")"
+kill "$(head -n1 /tmp/vyomanaut-demo/pids)"                       # stops only the coordinator
+"$BIN_DIR/vyomachain" period <N> --account <provider_wallet>      # until it says "claimable now"
+"$BIN_DIR/vyomachain" claim --period <N> --account <provider_wallet> --key-file ~/vyoma-keys/owner.key
 ```
-
-Now show the proof:
-
-```bash
-cast call "$USDT" "balanceOf(address)(uint256)" <provider_wallet> --rpc-url "$RPC"
-```
-
-> The provider got its USDT. On the explorer, the `Claimed` event lists **two** addresses:
-> the *account* (provider, who got the money) and the *caller* (the bystander, who paid the
-> fee). They are different. That is the whole story in one screen.
 
 **Be straight about the limit:** only money that was **already posted** is protected. Earnings
 the coordinator had not posted yet when it died are not. Say this before anyone asks.
 
 ---
 
-## Part 9 — The owner gets unspent money back
+## Part 10 — The owner gets unspent money back
 
-The owner can also leave without us. If the coordinator posts nothing for **900 seconds**
-(fifteen minutes), anyone can send an owner's unspent USDT back to that owner.
-
-```bash
-cast call "$ESCROW" "refundableAt()(uint256)" --rpc-url "$RPC"
-date -r <that number>
-cast call "$ESCROW" "credit(address)(uint256)" "$OWNER_WALLET" --rpc-url "$RPC"
-```
-
-> The first line is the unix time the refund opens, the second turns it into a clock time,
-> the third shows how much is waiting. Every time the coordinator posts a period, the 900
-> seconds start again. If the owner spent nothing, deposit again so there is something left
-> to return.
-
-When the time has passed:
+If the coordinator posts nothing for **900 seconds** (fifteen minutes), anyone can send an
+owner's unspent USDT back to that owner.
 
 ```bash
-cast send "$ESCROW" "refund(address)" "$OWNER_WALLET" --rpc-url "$RPC" --private-key "$(cat "$OWNER_KEY_FILE")"
+"$BIN_DIR/vyomachain" balance --address <owner_wallet>      # "escrow credit" is what is waiting
+"$BIN_DIR/vyomachain" refund --owner <owner_wallet> --key-file ~/vyoma-keys/owner.key
 ```
 
-> Too early gives `CoordinatorStillActive`. That is the contract working, not a bug. USDT
-> arrives back in the owner's wallet. Only the unspent part comes back; what was already
-> posted for providers stays theirs.
+> Too early, it says when refunds open (`refunds open at 14:42:10 UTC`) — that is the contract
+> working, not a bug. Every time the coordinator posts a period, the 900 seconds start again.
+> Only the unspent part comes back; what was already posted for providers stays theirs. If the
+> owner spent nothing, deposit again first so there is something left to return.
 
----
-
-## Part 10 — Providers: what changes for them
+### Providers: what changes for them
 
 | Question | Answer |
 | --- | --- |
-| New commands for providers? | **None.** |
-| Do they need a wallet, WBT or USDT? | **No.** The coordinator pays the gas fees. |
+| New commands for providers? | **None.** `vyomachain` and `verifyreceipt` are operator and owner tools. |
+| Do they need a wallet, WBT or USDT? | **No.** The coordinator assigns an address and pays the fees. |
 | New question when they join? | **No.** |
 | Do they run anything different from the provider guide? | **No.** Same `join.sh`, same `provider inspect`, same `provider depart`. |
 | How would a provider see money? | Only through the operator, who can show their wallet page on the explorer. |
-| What does the operator do per provider? | Runs the one bind command in 5.2 once the provider is `ACTIVE`. |
-
-> Providers' wallets are chosen by the operator in this demo. A provider does not even know
-> it exists unless you show them.
 
 ---
 
-## Part 11 — Running it again, and when something goes wrong
+## Part 11 — Watching it on the dashboard
+
+With `--expose-metrics` on `up.sh` and the coordinator's address in
+`deployments/observability/targets/microservice.json` (Part 4.3 of the normal guide), Grafana
+shows a second dashboard next to the main one:
+
+> Dashboards → **Vyomanaut** folder → **"Vyomanaut — Whitechain settlement and audit anchoring"**
+
+| Panel | Healthy looks like |
+| --- | --- |
+| USDT deposited by owners / paid to providers | Climb after Parts 6 and 7 |
+| Payout periods by state | `reserved → posted → claimed` appear in order |
+| Releases waiting for a wallet | `0`. Above `0` means a provider has no wallet yet |
+| Newest audit epoch anchored | Rises every interval |
+| Chain step errors | Flat. A few in a row during a network blip is normal; a steady stream means the node is unreachable or the coordinator wallet is out of WBT |
+
+---
+
+## Part 12 — Running it again, and when something goes wrong
 
 ### Running again
 
 `up.sh` wipes the database every time. The blockchain remembers everything.
 
-- Always set `VYOMANAUT_CHAIN_START_BLOCK` fresh (Part 4), so old deposits are not counted
-  again.
-- Period numbers keep going up across runs (period 7, 8…). The coordinator handles this on
-  its own.
-- Wallets must be bound again after every `up.sh` (Part 5). The database was wiped.
-- Unspent USDT from an earlier run stays inside the contract. Take it back with Part 9.
-- There is **no limit** on how many times you can run this. The real limits are fuel and
-  coins: WBT for fees (about a thousandth of a WBT per transaction, 2 WBT a day from the
-  faucet) and USDT (110 in the owner wallet; a demo run uses very little).
+- Run `eval "$(scripts/demo/chain_env.sh)"` again, so `START_BLOCK` is fresh and old deposits are
+  not counted again.
+- Period and epoch numbers keep going up across runs. The coordinator handles this on its own.
+- Provider wallets are re-assigned automatically. The owner must **bind again** (6.2): the
+  database was wiped.
+- Unspent USDT from an earlier run stays inside the contract. Take it back with Part 10.
+- There is **no limit** on how many times you can run this. The real limits are fuel and coins:
+  WBT for fees (about a thousandth of a WBT per transaction, 2 WBT a day from the faucet) and
+  USDT (110 in the owner wallet; a demo run uses very little).
 
 ### When something goes wrong
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| No `[CHAIN] settlement running` line | The `export` lines were set in a different terminal from `up.sh` | `down.sh`, export again in the same terminal, `up.sh` |
+| No `[CHAIN]` lines at all | `chain_env.sh` was run in a different terminal from `up.sh` | `down.sh`, `eval` again in the same terminal, `up.sh` |
 | `[CHAIN] cannot start yet (retrying)` | Node unreachable, or the key file is readable by others | Check internet; `chmod 600 ~/vyoma-keys/deployer.key` |
 | `WARNING: this key … is not the escrow's coordinator` | Wrong key file | Use `deployer.key` |
-| `… is required when VYOMANAUT_CHAIN_ENABLED=1` | A variable is missing | Re-run the exports in Part 4 |
-| Deposit made but no `credited` line | Owner wallet not bound (5.1), or the deposit was made before `START_BLOCK` was set | Bind it; the credit appears by itself. If it was too early, deposit again |
-| `releases are waiting but owners' charges or on-chain credit cannot fund them yet` | Owner has no USDT inside the contract | Deposit (Part 6) |
-| Payout never reserved | The provider has no wallet bound | Part 5.2 |
-| Period `RESERVED` but never `posted` | Coordinator wallet out of WBT | Check balance (2.3), use the faucet |
-| `cast send` says `connection` or empty URL | `$RPC` is not set in this terminal | Set it again (2.3) |
-| `WindowStillOpen` | 120 seconds have not passed | Wait for the time in the `posted` line |
-| `CoordinatorStillActive` | 900 seconds of silence have not passed | Wait; check `refundableAt` |
-| `NothingToClaim` | Already claimed, or wrong wallet | Check `allocationOf` |
-| Coordinator claimed before you could stop it | You were slower than two minutes | Upload again and be quicker; pre-type the `kill` line |
+| `[ANCHOR] … is not the anchor's coordinator` | Wrong key file | Same |
+| `vyomachain wallet bind` says `cannot reach the coordinator's chain API` | Wrong address, or the coordinator was not started with the chain on | Check `--api`; look for the `chain API listening` line |
+| `wallet bind` says `refused (unauthorized)` | The owner's login expired (24 hours) | `client recover` or register again, then bind |
+| `wallet bind` says `already_bound` | That owner has a different wallet bound | Use that wallet, or register a new owner |
+| `wallet bind` says `wallet_taken` | Another owner already uses that wallet | Use a different wallet |
+| Deposit made but no `credited` line | Wallet not bound (6.2), or the deposit was made before `chain_env.sh` ran | Bind it; the credit appears by itself. If too early, deposit again |
+| `vyomachain deposit` says the wallet holds less USDT | Not enough test USDT | Check `vyomachain balance`; swap on YetiTrade |
+| `releases are waiting but owners' charges or on-chain credit cannot fund them yet` | Owner has no USDT inside the contract | Deposit (6.3) |
+| Payout never reserved | The provider has no wallet yet | Wait ten seconds; check Part 5 |
+| Period `RESERVED` but never `posted` | Coordinator wallet out of WBT | `vyomachain balance` on the coordinator wallet; faucet |
+| `verifyreceipt epoch latest` says `no epoch has been anchored yet` | Anchoring needs audits older than 30 seconds, then the interval | Wait; check the `[ANCHOR]` lines |
+| `verifyreceipt` says MISMATCH with no tampering | A very late-written audit record landed inside an old epoch | Rare. Re-run with the next epoch; say so honestly |
+| `too early: the challenge window is still open` | 120 seconds have not passed | Wait for the time it prints |
+| `too early: the coordinator posted recently` | 900 seconds of silence have not passed | Wait for the time it prints |
+| `nothing to claim … already paid` | Already claimed, or wrong wallet | `vyomachain period N --account …` |
+| `chain_escape.sh` says the coordinator already claimed | You were slower than two minutes | Upload again and run it the moment `posted` appears |
 | Every number on the console looks wrong | `--mode=demo` missing | Add it |
 
-> If you edit anything and are unsure, ask before running a command that has a private key
-> in it. A key pasted into a chat or a public file cannot be taken back.
+> A private key pasted into a chat or a public file cannot be taken back. Key files stay on the
+> machine that owns them, and `vyomachain` only ever asks for the file's path.
 
 ---
 
-## Part 12 — What is not built yet
+## Part 13 — What is not built, honestly
 
-Be honest with anyone who asks:
-
-- Binding wallets is a database command, not a button. A `client` command is planned.
-- The data owner deposits with `cast`, not with the `client` program.
-- Audit history is not yet published on the chain. The contract for it is deployed and
-  verified; the coordinator does not use it yet.
-- A provider's payout address is chosen by the operator. Providers do not bring a wallet.
-- Everything runs on a **test network** with coins that have no value, and the contracts
-  are unaudited.
+- Providers do not bring their own wallet. The demo gives them derived (custodial) addresses.
+- The wallet-sign-up page is plain HTTP on the demo network. It would need TLS anywhere else.
+- Data owners deposit with `vyomachain`, not with the `client` program.
+- Whitechain has a single sequencer, USDT can be frozen by its issuer, and everything runs on a
+  **test network** with coins that have no value. The contracts are unaudited.
+- The audit fingerprint proves old records were not changed. It does not prove a record was
+  written; the provider's own signature does that.

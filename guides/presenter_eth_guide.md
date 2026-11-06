@@ -8,15 +8,21 @@ below without looking, you are ready.
 
 ## Status box
 
-| Piece | Status |
-| --- | --- |
-| Escrow contract on Whitechain Sepolia (USDT in, payouts out, refund) | **LIVE**, deployed and verified |
-| Coordinator deposits → ledger credit → payout → claim | **LIVE** once the operator guide's smoke run has passed — confirm |
-| "Coordinator disappears, provider still gets paid" demo | **LIVE** (done by hand with `cast`, see `operator_eth_guide.md` Part 8) — rehearse it |
-| Owner gets unspent USDT back | **LIVE** (same: by hand, Part 9) |
-| Audit anchor contract | Deployed and verified. **Not yet used by the coordinator.** Do not claim anchoring works unless that changes |
-| `verify-receipt` tamper demo | **Not built.** Skip it |
-| Wallet binding | A database command, not a button. Say so if asked |
+Everything below was built and tested on a local chain and a real database. **Nothing counts as
+LIVE until the smoke run on Whitechain Sepolia has passed** — tick each row yourself after you have
+seen its explorer link or its log line.
+
+| Piece | Built | Tick when seen live |
+| --- | --- | --- |
+| Escrow contract on Whitechain Sepolia (USDT in, payouts out, refund) | Deployed and verified | [ ] |
+| Owner deposits USDT with `vyomachain` → ledger credit | Built | [ ] `[CHAIN] credited …` |
+| Payout reserved → posted → claimed on chain | Built | [ ] `[CHAIN] period N claimed` |
+| Providers get a payout address automatically (custodial in the demo) | Built | [ ] |
+| "Coordinator disappears, a stranger still pays the provider" (`chain_escape.sh`) | Built, rehearsed on a local chain | [ ] |
+| Owner gets unspent USDT back (`vyomachain refund`) | Built, tested on a local chain | [ ] |
+| Audit fingerprint anchored on chain | Built | [ ] `[ANCHOR] epoch N anchored` |
+| `verifyreceipt` + tamper demo (`chain_tamper.sh`) | Built, rehearsed on a local chain | [ ] MATCH then MISMATCH |
+| Grafana chain dashboard | Built | [ ] |
 
 ---
 
@@ -55,6 +61,9 @@ Say this in your own words:
 4. **An exit door.** Posted payouts can be claimed by *anyone*, and the money always goes to
    the provider. If we are silent for fifteen minutes, owners can take back what they have not
    spent.
+5. **A fingerprint of the audit history.** Every couple of minutes we write one short
+   fingerprint of all new audit records to the blockchain. If we ever change an old record, the
+   fingerprint no longer matches, and anyone with the database can show it.
 
 What we did **not** change: how files are stored, encrypted, checked, repaired, or priced.
 Providers' computers run the same program as before. **No wallet, no coins, nothing new for
@@ -90,14 +99,15 @@ Practise it three times. Pre-type every command in a text file so you only paste
 | Time | Who | What you do | What you say |
 | --- | --- | --- | --- |
 | 0:00 | Operator | Show the console with 5+ providers `ACTIVE` | "Real computers storing encrypted pieces. Nothing new for them." |
-| 0:20 | Owner | Run the two `cast send` deposit lines; open the transaction on the explorer | "The owner puts one USDT into the contract. That link is public and permanent." |
+| 0:20 | Owner | `vyomachain deposit --amount 1 …`; open the `deposited` link on the explorer | "The owner puts one USDT into the contract. That link is public and permanent." |
 | 0:50 | Operator | Show `[CHAIN] credited …`, then `client balance` shows ₹1,000 | "Our normal account now shows it. The ledger follows the chain." |
 | 1:10 | Owner | Upload a file | "Storing a file costs money, charged per audit period." |
 | 1:30 | Operator | Show `period N posted` | "Here, earnings became a list on the blockchain. We just made a promise we cannot take back." |
-| 1:40 | Operator | **Stop the coordinator** with the `kill` line | "Now we disappear." |
-| 2:00 | Bystander | After the window, run `claim` from a different wallet | "A stranger presses the button. We are not involved." |
+| 1:40 | Operator | Run `scripts/demo/chain_escape.sh` (it stops only the coordinator) | "Now we disappear." |
+| 2:00 | Bystander | The script waits out the window, then claims from a different wallet | "A stranger presses the button. We are not involved." |
 | 2:30 | Anyone | Show the provider's wallet page: USDT arrived. Point at *caller ≠ account* | "The provider is paid. The money went to the provider, not to the stranger." |
-| 2:50 | Owner | (Only if 15 minutes have passed) `refund` | "And the owner can leave with what is left." |
+| 2:50 | Owner | (Only if 15 minutes have passed) `vyomachain refund` | "And the owner can leave with what is left." |
+| optional | Operator | Before the coordinator moment: `scripts/demo/chain_tamper.sh` | "Now I secretly change one audit record. The blockchain still remembers the old fingerprint, so the check fails." |
 
 > **Do the first part before the audience arrives** and keep a finished example open in a
 > browser tab: the 120-second window and the 15-minute silence rule are long. Run the
@@ -168,6 +178,11 @@ make the guardian a multi-signature wallet.
 Uploads and audits carry on, because the ledger is separate. Payouts wait and catch up when it
 returns. Posted payouts stay claimable.
 
+**Why is the audit history anchored every two minutes and not every record?**
+One short fingerprint per batch, however many records, so the cost does not grow with the
+network. The records themselves stay in our database; the chain only remembers what they must
+add up to.
+
 **Why not a token?**
 Because providers should be paid in something stable. A token adds speculation, and the
 problem we are solving is trust, not fundraising.
@@ -226,8 +241,14 @@ encryption, and a coordinator that picks placement for diversity. Filecoin and S
 tokens and market prices.
 
 **Can the coordinator cheat on audits?**
-Every pass carries the provider's own signature, so a faked result can be shown to be forged.
-(Do not say audit history is on the chain unless that has been built.)
+Two protections. Every pass carries the provider's own signature, so a faked result can be shown
+to be forged. And every couple of minutes we write a fingerprint of the audit history to the
+blockchain, so rewriting an old record is caught: the check compares the database with the
+fingerprint read from the chain, not from us.
+
+**But you could simply not record a failure.**
+The fingerprint proves old records were not changed. It does not prove a record was written; the
+provider keeps the countersigned receipt, so a missing record is evidence against us.
 
 **What happens to the data if you go bankrupt?**
 Honest answer: the money is protected, the *service* is not automatic. Pieces sit on
@@ -256,7 +277,7 @@ coordinator pays small gas costs.
 | Network | Whitechain Sepolia, chain ID **1874**, one-second blocks |
 | Test USDT | `0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7` (6 decimals) |
 | Escrow contract | `0xBcE841C78c6c40C551fc223Ba9415D4751Af5958` (verified) |
-| Audit anchor contract | `0x1b2b623ecA0A7899C6a24eaf401a99d2434FDB3d` (verified, not yet used) |
+| Audit anchor contract | `0x1b2b623ecA0A7899C6a24eaf401a99d2434FDB3d` (verified) |
 | Veto window | **120 seconds** after a payout is posted |
 | Silence before refund | **900 seconds** without a post |
 | Demo scale | ₹1,000 = 1 USDT |
