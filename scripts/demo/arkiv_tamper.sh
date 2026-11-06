@@ -26,6 +26,8 @@ cd -- "$REPO_ROOT"
 STATE_DIR="${VYOMANAUT_DEMO_STATE_DIR:-/tmp/vyomanaut-demo}"
 BIN_DIR="$STATE_DIR/bin"
 STATE_FILE="$STATE_DIR/arkiv_tamper.state"
+BATCH_RECEIPTS=100   # internal/arkiv MaxReceiptsPerBatch
+CHECK_LIMIT="${ARKIV_TAMPER_CHECK_LIMIT:-20}"   # newest batches to verify; a busy period makes many
 
 PGHOST="${PGHOST:-localhost}"
 PGPORT="${PGPORT:-5432}"
@@ -55,7 +57,7 @@ check() {
   # lib/pq defaults to sslmode=require; the demo Postgres has no TLS.
   PGSSLMODE="${PGSSLMODE:-disable}" \
   PGUSER=vyomanaut_app PGPASSWORD="$PGAPPPASSWORD" PGHOST="$PGHOST" PGPORT="$PGPORT" PGDATABASE="$PGDATABASE" \
-    "$BIN_DIR/arkivcheck" --limit 5 audits
+    "$BIN_DIR/arkivcheck" --limit "$CHECK_LIMIT" audits
 }
 
 flip() { # flip <receipt_id>
@@ -75,14 +77,25 @@ fi
 [[ ! -f "$STATE_FILE" ]] || die "a tamper is already in place ($(cat "$STATE_FILE")); run with --restore first"
 
 # The newest confirmed batch: its reference is <provider_id>:<period_start>:<seq>.
+# A provider with more than 100 receipts in a period has several batches (seq 0,
+# 1, ...), each holding the next 100 receipts in canonical order. Pick a receipt
+# from THAT batch's own slice, or the check would look at a different batch.
 RECEIPT="$(admin -c "
-SELECT r.receipt_id FROM arkiv_publications p
-JOIN audit_receipts r
-  ON r.provider_id = split_part(p.reference, ':', 1)::uuid
- AND r.service_countersign_ts >= p.range_start AND r.service_countersign_ts < p.range_end
- AND r.service_sig IS NOT NULL AND r.audit_result IS NOT NULL
-WHERE p.kind = 'audit_batch' AND p.status = 'CONFIRMED'
-ORDER BY p.created_at DESC, r.service_countersign_ts, r.receipt_id
+WITH b AS (
+  SELECT split_part(reference, ':', 1)::uuid AS provider_id,
+         split_part(reference, ':', 3)::int  AS seq,
+         range_start, range_end
+  FROM arkiv_publications
+  WHERE kind = 'audit_batch' AND status = 'CONFIRMED'
+  ORDER BY created_at DESC LIMIT 1)
+SELECT x.receipt_id FROM (
+  SELECT r.receipt_id, b.seq,
+         row_number() OVER (ORDER BY r.service_countersign_ts, r.receipt_id) - 1 AS pos
+  FROM b JOIN audit_receipts r
+    ON r.provider_id = b.provider_id
+   AND r.service_countersign_ts >= b.range_start AND r.service_countersign_ts < b.range_end
+   AND r.service_sig IS NOT NULL AND r.audit_result IS NOT NULL) x
+WHERE x.pos = x.seq * ${BATCH_RECEIPTS}
 LIMIT 1;")"
 [[ -n "$RECEIPT" ]] || die "no published batch yet: wait for an '[ARKIV] audit_batch ... published' line in the coordinator log"
 
