@@ -75,6 +75,11 @@ object ProviderEngine {
     private var attempt = 0
     private var runStartedAt = 0L
     private var runningAdvertiseAddr: String? = null
+
+    // On-disk copy of the log (LogFile), written at most every LOG_SAVE_DELAY_S seconds.
+    private var logFile: File? = null
+    private var logSaveScheduled = false
+    private const val LOG_SAVE_DELAY_S = 2L
     private var scheduledRestart: ScheduledFuture<*>? = null
 
     // Per-program output checks (ProviderLogRules).
@@ -87,12 +92,25 @@ object ProviderEngine {
 
     fun isBinaryAvailable(context: Context): Boolean = binaryFile(context).exists()
 
+    /**
+     * Loads the saved log once per app process, so output from before the app was killed is still visible.
+     * Safe to call repeatedly.
+     */
+    @Synchronized
+    fun restoreLog(context: Context) {
+        if (logFile != null) return
+        val file = File(context.applicationContext.filesDir, LogFile.NAME)
+        logFile = file
+        if (mutableLog.value.isEmpty()) mutableLog.value = LogFile.read(file, MAX_LOG_LINES)
+    }
+
     fun startOnboarding(context: Context, config: EngineConfig) {
         val ctx = context.applicationContext
+        restoreLog(ctx)
         synchronized(this) {
             keepRunning = false
             cancelScheduledRestart()
-            mutableLog.value = emptyList()
+            appendLog("[APP] ---- registration started ----")
             mutableState.value = EngineState.Registering
         }
         worker.execute { launch(ctx, config, ProviderArgs.onboard(config), isOnboarding = true) }
@@ -114,12 +132,14 @@ object ProviderEngine {
      * Restarting while it recovers from an exit, or Failed when it cannot start or gave up.
      */
     fun startRun(context: Context) {
+        restoreLog(context)
         synchronized(this) {
             appContext = context.applicationContext
             keepRunning = true
             attempt = 0
             cancelScheduledRestart()
-            mutableLog.value = emptyList()
+            // The previous output is kept on purpose: it explains why the last run ended.
+            appendLog("[APP] ---- provider started ----")
             mutableState.value = EngineState.Starting
         }
         worker.execute { runOnce() }
@@ -198,7 +218,7 @@ object ProviderEngine {
             EngineConfigs.dataDir(ctx).deleteRecursively()
             EngineStore(ctx).clearRegistration()
             synchronized(this) {
-                mutableLog.value = emptyList()
+                setLog(emptyList())
                 appendLog("[APP] Registration reset. Register this phone again.")
                 mutableState.value = EngineState.Idle
             }
@@ -266,7 +286,23 @@ object ProviderEngine {
 
     @Synchronized
     private fun appendLog(line: String) {
-        mutableLog.value = (mutableLog.value + line).takeLast(MAX_LOG_LINES)
+        setLog(mutableLog.value + line)
+    }
+
+    @Synchronized
+    private fun setLog(lines: List<String>) {
+        mutableLog.value = lines.takeLast(MAX_LOG_LINES)
+        if (logFile == null || logSaveScheduled) return
+        logSaveScheduled = true
+        worker.schedule({ saveLog() }, LOG_SAVE_DELAY_S, TimeUnit.SECONDS)
+    }
+
+    private fun saveLog() {
+        val (file, lines) = synchronized(this) {
+            logSaveScheduled = false
+            logFile to mutableLog.value
+        }
+        file?.let { LogFile.write(it, lines) }
     }
 
     /** Detaches the current program (its output and exit are ignored from now on) and waits for it to exit. */
@@ -325,7 +361,7 @@ object ProviderEngine {
         pending.setLength(0)
         pending.append(partial)
         if (complete.isNotEmpty()) {
-            mutableLog.value = (mutableLog.value + complete).takeLast(MAX_LOG_LINES)
+            setLog(mutableLog.value + complete)
         }
         for (line in complete) checkLine(line)
         if (mutableState.value == EngineState.Registering && pending.contains(OTP_PROMPT)) {
