@@ -3,6 +3,12 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Lets the Network tab check that the ZeroTier app is installed. -->
+    <queries>
+        <package android:name="com.zerotier.one" />
+    </queries>
 
     <!-- allowBackup is off: the provider identity seed must never be restored onto another device. -->
     <application
