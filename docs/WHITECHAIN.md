@@ -9,8 +9,10 @@ contract on Whitechain Sepolia (chain ID 1874), without changing the ledger.
 1. **Deposit.** An owner deposits USDT into `VyomaEscrow` from a wallet. The
    coordinator reads the `Deposited` log and credits the owner whose wallet it
    was, once, as a normal ledger deposit.
-2. **Charge and release.** Unchanged. The ledger charges owners and releases
-   earnings to providers.
+2. **Charge and release.** The ledger charges owners and releases earnings to
+   providers. Each release tick first closes an audit period for every ACTIVE
+   provider (`payment.CloseAuditPeriods`); before this build no code created
+   those periods, so no release ever happened in a live run.
 3. **Post.** Released earnings are grouped by payout wallet into a period and
    posted to the contract, together with the owners' matching debits.
 4. **Challenge window.** A separate guardian key can veto a period. A veto
@@ -166,4 +168,7 @@ larger than the wallet's USDT balance fails before any gas is spent.
   providers are actually paid; earnings withheld by a reliability tier stay as
   the owner's escrow credit.
 - Withdrawing unspent credit while the coordinator is active is not supported.
+- Audit periods are closed on the release tick, so an announced departure finds
+  no open period to prorate and releases nothing at departure; the held balance
+  follows the existing departure rules.
 - Test tokens have no monetary value.
