@@ -5,6 +5,7 @@ go 1.26.2
 require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
+	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0
 	github.com/dgraph-io/badger/v4 v4.9.6
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.12.3

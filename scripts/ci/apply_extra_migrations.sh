@@ -27,23 +27,32 @@ shopt -s nullglob
 
 # Pass 1: validate before touching the database. 001 is exempt from the
 # uniqueness rule because it legitimately has two files (prod and demo).
-declare -A seen=()
+#
+# macOS still ships bash 3.2, which has no associative arrays (`declare -A`),
+# so the numbers already seen are kept in one space-delimited string instead.
+seen=" "
 extra=()
 for f in "$REPO_ROOT"/migrations/[0-9][0-9][0-9]_*.sql; do
   base="$(basename "$f")"
   num="${base%%_*}"
   [[ "$num" == "001" ]] && continue
-  if [[ -n "${seen[$num]:-}" ]]; then
-    echo "FAIL: migration number $num is used by both ${seen[$num]} and $base" >&2
-    exit 1
-  fi
-  seen[$num]="$base"
+  case "$seen" in
+    *" $num "*)
+      first=""
+      for g in ${extra[@]+"${extra[@]}"}; do
+        case "$(basename "$g")" in "${num}_"*) first="$(basename "$g")" ;; esac
+      done
+      echo "FAIL: migration number $num is used by both $first and $base" >&2
+      exit 1
+      ;;
+  esac
+  seen="$seen$num "
   extra+=("$f")
 done
 
 # Pass 2: apply in numeric order (the glob already sorts lexicographically,
 # which is numeric order for zero-padded names).
-for f in "${extra[@]}"; do
+for f in ${extra[@]+"${extra[@]}"}; do
   echo "[migrate] applying $(basename "$f")"
   psql -v ON_ERROR_STOP=1 -f "$f"
 done

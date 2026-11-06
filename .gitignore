@@ -46,3 +46,10 @@ secrets/
 node_modules/
 contracts/out/
 contracts/cache/
+
+# Binaries that `go build ./cmd/<name>` writes into the repo root
+/microservice
+/provider
+/operator
+/client
+contracts/broadcast/

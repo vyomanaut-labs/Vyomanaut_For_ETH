@@ -375,7 +375,7 @@ func runReleaseOnTicker(ctx context.Context, db, primaryDB *sql.DB, profile conf
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			_ = ComputeMonthlyRelease(ctx, db, primaryDB, profile, provider) // best-effort background loop
+			closePeriodsAndRelease(ctx, db, primaryDB, profile, provider)
 		}
 	}
 }
@@ -390,7 +390,7 @@ func runReleaseOnCalendarDate(ctx context.Context, db, primaryDB *sql.DB, profil
 			return
 		case <-ticker.C:
 			if run, newLastRun := shouldRunRelease(time.Now(), lastRun); run {
-				_ = ComputeMonthlyRelease(ctx, db, primaryDB, profile, provider)
+				closePeriodsAndRelease(ctx, db, primaryDB, profile, provider)
 				lastRun = newLastRun
 			}
 		}
