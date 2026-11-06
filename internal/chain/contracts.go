@@ -145,6 +145,16 @@ func (e *EscrowContract) Coordinator(ctx context.Context) (Address, error) {
 	return abiReader{out}.address(0)
 }
 
+// RefundableAt is the unix time from which owners may reclaim unspent credit
+// if the coordinator has posted nothing since.
+func (e *EscrowContract) RefundableAt(ctx context.Context) (uint64, error) {
+	out, err := callView(ctx, e.rpc, e.addr, "refundableAt()")
+	if err != nil {
+		return 0, err
+	}
+	return abiReader{out}.uintBits(0, bits64)
+}
+
 // Token returns the ERC-20 token the escrow holds.
 func (e *EscrowContract) Token(ctx context.Context) (Address, error) {
 	out, err := callView(ctx, e.rpc, e.addr, "token()")

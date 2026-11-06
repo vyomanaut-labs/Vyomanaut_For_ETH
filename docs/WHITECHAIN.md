@@ -133,6 +133,31 @@ INSERT INTO owner_wallets (owner_id, wallet) VALUES ('<owner uuid>', decode('<40
 INSERT INTO provider_payout_addresses (provider_id, wallet) VALUES ('<provider uuid>', decode('<40 hex digits>', 'hex'));
 ```
 
+## The owner and escape-hatch command
+
+`vyomachain` (`cmd/vyomachain`) is for data owners, and for anyone who has to move
+money without the coordinator. Providers never run it. It talks to the chain
+directly, so the last two commands need only an RPC endpoint and a wallet holding a
+little gas token:
+
+```bash
+go build -o vyomachain ./cmd/vyomachain
+export VYOMANAUT_CHAIN_RPC_URL=https://rpc.testnet.whitechain.io
+export VYOMANAUT_CHAIN_API_URL=http://<coordinator>:8090     # supplies the contract addresses
+
+vyomachain wallet new --out ~/vyoma-keys/me.key              # a new wallet; never overwrites
+vyomachain wallet bind --key-file ~/vyoma-keys/me.key --data-dir ~/.vyomanaut-owner
+vyomachain deposit --amount 1 --key-file ~/vyoma-keys/me.key # approve (if needed) + deposit
+vyomachain balance --address 0x...                           # gas, USDT and escrow credit
+
+vyomachain period 3 --account 0x...                          # what a payout period holds
+vyomachain claim --period 3 --account 0x... --key-file any.key   # pays the ACCOUNT, not the caller
+vyomachain refund --owner 0x... --key-file any.key           # after the coordinator went quiet
+```
+
+Too-early claims and refunds are explained with the time they open. A deposit
+larger than the wallet's USDT balance fails before any gas is spent.
+
 ## Limits
 
 - The payout list is stored on chain, so posting costs gas linear in the number
