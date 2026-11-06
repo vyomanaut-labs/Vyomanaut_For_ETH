@@ -48,6 +48,9 @@ repair or the ledger: if the chain is unreachable it retries in the background.
 | `VYOMANAUT_CHAIN_ANCHOR_ADDRESS` | the `AuditAnchor` address; audit anchoring is off unless this is set |
 | `VYOMANAUT_CHAIN_ANCHOR_INTERVAL_SECONDS` | optional, default 600 |
 | `VYOMANAUT_CHAIN_ANCHOR_MAX_LEAVES` | optional, default 20000 receipts per epoch |
+| `VYOMANAUT_CHAIN_API_ADDR` | optional listen address of the wallet-binding API, e.g. `:8090` |
+| `VYOMANAUT_CHAIN_AUTO_PAYOUT_WALLETS` | `1` to give providers derived (custodial) demo payout wallets |
+| `VYOMANAUT_CHAIN_EXPLORER_URL` | optional explorer base URL shown to clients |
 
 The coordinator wallet needs a little WBT for gas. Migration
 `migrations/002_whitechain.sql` is applied by `scripts/demo/up.sh`.
@@ -97,15 +100,38 @@ look like an addition; the lag exists to make that rare.
 
 ## Binding wallets
 
-Until the CLI and API for this land, bind wallets directly:
+**Providers need nothing.** With `VYOMANAUT_CHAIN_AUTO_PAYOUT_WALLETS=1` the
+coordinator gives every provider that has not left a payout address derived from
+its own secret, as providers appear. A provider sees no new step, command or
+question. These demo wallets are **custodial**: the coordinator can reproduce the
+keys. A real provider would register their own address instead.
+
+**Owners bring their own wallet and prove they control it.** Set
+`VYOMANAUT_CHAIN_API_ADDR` (for example `:8090`) and the coordinator serves a small
+API on that address (plain HTTP, for the demo network only):
+
+| Route | Needs | What it does |
+|---|---|---|
+| `GET /chain/v1/info` | nothing | chain id, escrow and token addresses |
+| `GET /chain/v1/wallet` | owner session | the owner's bound wallet, if any |
+| `GET /chain/v1/wallet/message?wallet=0x…` | owner session | the exact text to sign |
+| `POST /chain/v1/wallet` | owner session | `{wallet, signature}`: binds the wallet |
+
+The owner's normal session token says who is asking; the wallet's signature over
+the binding message (EIP-191, naming the owner, the wallet and the chain) says
+who controls the wallet. Both are required, so a stranger cannot attach a wallet
+to someone else's account and an owner cannot claim a wallet they do not hold.
+A bound wallet is never silently replaced, and a wallet belongs to one owner.
+
+A deposit from an unbound wallet is recorded and credited as soon as its wallet
+is bound. A release for a provider with no payout wallet waits.
+
+Without the API, wallets can still be bound with SQL:
 
 ```sql
 INSERT INTO owner_wallets (owner_id, wallet) VALUES ('<owner uuid>', decode('<40 hex digits>', 'hex'));
 INSERT INTO provider_payout_addresses (provider_id, wallet) VALUES ('<provider uuid>', decode('<40 hex digits>', 'hex'));
 ```
-
-A deposit from an unbound wallet is recorded and credited as soon as its wallet
-is bound. A release for a provider with no payout wallet waits.
 
 ## Limits
 

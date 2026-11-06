@@ -33,6 +33,11 @@ const (
 	envChainAnchor            = "VYOMANAUT_CHAIN_ANCHOR_ADDRESS"
 	envChainAnchorIntervalSec = "VYOMANAUT_CHAIN_ANCHOR_INTERVAL_SECONDS"
 	envChainAnchorMaxLeaves   = "VYOMANAUT_CHAIN_ANCHOR_MAX_LEAVES"
+
+	// Wallet binding. Both are off unless set.
+	envChainAPIAddr     = "VYOMANAUT_CHAIN_API_ADDR"
+	envChainAutoWallets = "VYOMANAUT_CHAIN_AUTO_PAYOUT_WALLETS"
+	envChainExplorerURL = "VYOMANAUT_CHAIN_EXPLORER_URL"
 )
 
 var errChainConfig = errors.New("chain settings")
@@ -54,6 +59,14 @@ type chainSettings struct {
 	Anchor          chain.Address
 	AnchorInterval  time.Duration
 	AnchorMaxLeaves int
+
+	// APIAddr is the listen address of the chain API (wallet binding); empty
+	// leaves it off.
+	APIAddr string
+	// AutoPayoutWallets gives every provider a derived demo payout wallet.
+	AutoPayoutWallets bool
+	// Explorer is an optional block explorer base URL shown to clients.
+	Explorer string
 }
 
 // anchoring reports whether audit anchoring was asked for.
@@ -146,6 +159,16 @@ func chainSettingsFromEnv(getenv func(string) string) (chainSettings, error) {
 	c.SettleLag = time.Duration(lag) * time.Second
 	c.AnchorInterval = time.Duration(anchorEvery) * time.Second
 	c.AnchorMaxLeaves = int(anchorMax)
+
+	c.APIAddr = strings.TrimSpace(getenv(envChainAPIAddr))
+	c.Explorer = strings.TrimRight(strings.TrimSpace(getenv(envChainExplorerURL)), "/")
+	switch strings.ToLower(strings.TrimSpace(getenv(envChainAutoWallets))) {
+	case "", "0", "false", "no", "off":
+	case "1", "true", "yes", "on":
+		c.AutoPayoutWallets = true
+	default:
+		return c, fmt.Errorf("%w: %s must be 1 or 0", errChainConfig, envChainAutoWallets)
+	}
 
 	if v := strings.TrimSpace(getenv(envChainAnchor)); v != "" {
 		if c.Anchor, err = chain.ParseAddress(v); err != nil {

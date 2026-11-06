@@ -198,6 +198,12 @@ func TestAgainstALocalChain(t *testing.T) {
 		}
 	})
 
+	t.Run("the escrow reports its token", func(t *testing.T) {
+		if got, err := escrowAsCoord.Token(ctx); err != nil || got != tokenAddr {
+			t.Fatalf("token = %v, %v; want %v", got, err, tokenAddr)
+		}
+	})
+
 	t.Run("deposit", func(t *testing.T) {
 		ok := receiptOK(t)
 		ok(tokenAsOwner.Approve(ctx, escrowAddr, big.NewInt(500*usdt1)))

@@ -109,3 +109,38 @@ func RecoverAddress(digest [hashLen]byte, sig Signature) (Address, error) {
 func PersonalMessageHash(msg []byte) [hashLen]byte {
 	return Keccak256([]byte(fmt.Sprintf("\x19Ethereum Signed Message:\n%d", len(msg))), msg)
 }
+
+// SignatureLen is the length of an encoded signature: r, s and v.
+const SignatureLen = 2*hashLen + 1
+
+// recoveryBase is the offset wallets add to the recovery id in personal_sign
+// signatures (v is 27 or 28).
+const recoveryBase = 27
+
+// Bytes returns the 65-byte r || s || v form wallets produce, with v as 27 or 28.
+func (s Signature) Bytes() []byte {
+	out := make([]byte, 0, SignatureLen)
+	out = append(out, s.R[:]...)
+	out = append(out, s.S[:]...)
+	return append(out, s.V+recoveryBase)
+}
+
+// ParseSignature reads the 65-byte r || s || v form. v may be 0, 1, 27 or 28,
+// which covers the forms wallets and command-line tools emit.
+func ParseSignature(b []byte) (Signature, error) {
+	if len(b) != SignatureLen {
+		return Signature{}, fmt.Errorf("%w: a signature is %d bytes, got %d", ErrBadKey, SignatureLen, len(b))
+	}
+	var sig Signature
+	copy(sig.R[:], b[:hashLen])
+	copy(sig.S[:], b[hashLen:2*hashLen])
+	v := b[2*hashLen]
+	if v >= recoveryBase {
+		v -= recoveryBase
+	}
+	if v > 1 {
+		return Signature{}, fmt.Errorf("%w: bad recovery id", ErrBadKey)
+	}
+	sig.V = v
+	return sig, nil
+}

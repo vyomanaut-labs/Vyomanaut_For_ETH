@@ -385,3 +385,34 @@ func TestEveryCustomErrorHasADistinctSelector(t *testing.T) {
 		seen[s] = sig
 	}
 }
+
+func TestSignatureEncodingRoundTripsAndAcceptsEveryVForm(t *testing.T) {
+	k, err := ParseKeyHex("4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318")
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := PersonalMessageHash([]byte("hello"))
+	sig := k.Sign(digest)
+	enc := sig.Bytes()
+	if len(enc) != SignatureLen || (enc[64] != 27 && enc[64] != 28) {
+		t.Fatalf("encoding = %x", enc)
+	}
+	for _, v := range []byte{sig.V, sig.V + 27} { // 0/1 and 27/28 forms
+		enc[64] = v
+		got, err := ParseSignature(enc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		addr, err := RecoverAddress(digest, got)
+		if err != nil || addr != k.Address() {
+			t.Fatalf("v=%d: recovered %v, %v; want %v", v, addr, err, k.Address())
+		}
+	}
+	enc[64] = 5
+	if _, err := ParseSignature(enc); err == nil {
+		t.Fatal("a bad recovery id must be rejected")
+	}
+	if _, err := ParseSignature(enc[:64]); err == nil {
+		t.Fatal("a short signature must be rejected")
+	}
+}

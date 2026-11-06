@@ -145,6 +145,15 @@ func (e *EscrowContract) Coordinator(ctx context.Context) (Address, error) {
 	return abiReader{out}.address(0)
 }
 
+// Token returns the ERC-20 token the escrow holds.
+func (e *EscrowContract) Token(ctx context.Context) (Address, error) {
+	out, err := callView(ctx, e.rpc, e.addr, "token()")
+	if err != nil {
+		return Address{}, err
+	}
+	return abiReader{out}.address(0)
+}
+
 // Credit is an owner's unspent deposit.
 func (e *EscrowContract) Credit(ctx context.Context, owner Address) (*big.Int, error) {
 	return viewUint(ctx, e.rpc, e.addr, "credit(address)", addrArg(owner))

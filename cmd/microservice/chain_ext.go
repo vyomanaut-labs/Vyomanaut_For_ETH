@@ -9,13 +9,21 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
+	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/vyomanaut-labs/Vyomanaut_V2/internal/anchor"
+	"github.com/vyomanaut-labs/Vyomanaut_V2/internal/api"
 	"github.com/vyomanaut-labs/Vyomanaut_V2/internal/chain"
+	"github.com/vyomanaut-labs/Vyomanaut_V2/internal/chainapi"
+	"github.com/vyomanaut-labs/Vyomanaut_V2/internal/chainbind"
 	"github.com/vyomanaut-labs/Vyomanaut_V2/internal/chainsettle"
 	"github.com/vyomanaut-labs/Vyomanaut_V2/internal/metrics"
 )
@@ -43,6 +51,9 @@ func startChainSettlement(ctx context.Context, d extensionDeps) error {
 	if err != nil {
 		return err
 	}
+	if cfg.AutoPayoutWallets {
+		go runWalletAssigner(ctx, d)
+	}
 	go runChainSettlement(ctx, d, cfg, key)
 	return nil
 }
@@ -57,6 +68,9 @@ func runChainSettlement(ctx context.Context, d extensionDeps, cfg chainSettings,
 	}
 	if cfg.anchoring() {
 		go runChainAnchoring(ctx, d, cfg, rpc, sender)
+	}
+	if cfg.APIAddr != "" {
+		go serveChainAPI(ctx, d, cfg, rpc)
 	}
 	for {
 		svc, err := buildChainService(ctx, d, cfg, sender, rpc)
@@ -153,6 +167,85 @@ func anchorEvery(cfg chainSettings) time.Duration {
 // anchorCoordinator reads the coordinator address of an AuditAnchor.
 func anchorCoordinator(ctx context.Context, rpc *chain.RPC, addr chain.Address) (chain.Address, error) {
 	return chain.NewAnchorContract(addr, rpc, nil).Coordinator(ctx)
+}
+
+const (
+	walletAssignEvery = 10 * time.Second
+	apiReadTimeout    = 10 * time.Second
+	apiShutdownWait   = 3 * time.Second
+)
+
+// runWalletAssigner gives providers a derived demo payout wallet as they
+// appear, so no provider (and no operator) has to register an address. The
+// wallets are derived from the coordinator's own secret: custodial, and said so.
+func runWalletAssigner(ctx context.Context, d extensionDeps) {
+	binder := chainbind.NewBinder(d.DB)
+	secret := d.SigningKey.Seed()
+	derive := func(p uuid.UUID) (chain.Address, error) { return chainbind.DeriveProviderWallet(secret, p) }
+	log.Printf("[CHAIN] demo payout wallets: providers get an address derived from the coordinator's key (custodial)")
+	for {
+		n, err := binder.AssignProviderWallets(ctx, derive)
+		switch {
+		case err != nil && ctx.Err() == nil:
+			log.Printf("[CHAIN] could not assign payout wallets (will retry): %v", err)
+		case n > 0:
+			log.Printf("[CHAIN] assigned demo payout wallets to %d provider(s)", n)
+		}
+		if !sleepCtx(ctx, walletAssignEvery) {
+			return
+		}
+	}
+}
+
+// serveChainAPI serves the chain API: which contracts are in use, and binding
+// an owner's wallet. It needs the escrow's token address, read from the chain.
+func serveChainAPI(ctx context.Context, d extensionDeps, cfg chainSettings, rpc *chain.RPC) {
+	escrow := chain.NewEscrowContract(cfg.Escrow, rpc, nil)
+	var token chain.Address
+	for {
+		var err error
+		if token, err = escrow.Token(ctx); err == nil {
+			break
+		}
+		log.Printf("[CHAIN] chain API waiting for the escrow's token address (retrying): %v", err)
+		if !sleepCtx(ctx, chainStartRetry) {
+			return
+		}
+	}
+	chainID, err := rpc.ChainID(ctx)
+	if err != nil {
+		chainID = cfg.ChainID
+	}
+
+	pub, ok := d.SigningKey.Public().(ed25519.PublicKey)
+	if !ok {
+		log.Printf("[CHAIN] chain API not started: the coordinator's key is not an Ed25519 key")
+		return
+	}
+	verify := func(tok string) (uuid.UUID, string, error) {
+		c, err := api.VerifyJWT(pub, tok)
+		return c.Subject, c.Role, err
+	}
+	srv := &http.Server{
+		Addr: cfg.APIAddr,
+		Handler: chainapi.New(chainapi.Deps{
+			Wallets: chainbind.NewBinder(d.DB),
+			Verify:  verify,
+			Info:    chainapi.Info{ChainID: chainID, Escrow: cfg.Escrow, Token: token, Anchor: cfg.Anchor, Explorer: cfg.Explorer},
+		}),
+		ReadHeaderTimeout: apiReadTimeout,
+		ReadTimeout:       apiReadTimeout,
+	}
+	go func() {
+		<-ctx.Done()
+		shutdown, cancel := context.WithTimeout(context.Background(), apiShutdownWait)
+		defer cancel()
+		_ = srv.Shutdown(shutdown)
+	}()
+	log.Printf("[CHAIN] chain API listening on %s (wallet binding; plain HTTP, for the demo network only)", cfg.APIAddr)
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Printf("[CHAIN] chain API stopped: %v", err)
+	}
 }
 
 // chainObserver feeds settlement events into Prometheus.

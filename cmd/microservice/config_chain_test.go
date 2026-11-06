@@ -136,3 +136,32 @@ func TestAnchoringRejectsAnAddressThatIsNotOne(t *testing.T) {
 		t.Fatalf("err = %v; want a message naming the variable but not echoing the value", err)
 	}
 }
+
+func TestWalletBindingIsOffByDefault(t *testing.T) {
+	c, err := chainSettingsFromEnv(env(validChainEnv()))
+	if err != nil || c.APIAddr != "" || c.AutoPayoutWallets || c.Explorer != "" {
+		t.Fatalf("settings = %+v err=%v; want everything off", c, err)
+	}
+}
+
+func TestWalletBindingSettingsAreRead(t *testing.T) {
+	m := validChainEnv()
+	m[envChainAPIAddr] = " :8090 "
+	m[envChainAutoWallets] = "1"
+	m[envChainExplorerURL] = "https://explorer.testnet.whitechain.io/"
+	c, err := chainSettingsFromEnv(env(m))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.APIAddr != ":8090" || !c.AutoPayoutWallets || c.Explorer != "https://explorer.testnet.whitechain.io" {
+		t.Fatalf("settings = %+v", c)
+	}
+}
+
+func TestAutoPayoutWalletsMustBeOneOrZero(t *testing.T) {
+	m := validChainEnv()
+	m[envChainAutoWallets] = "maybe"
+	if _, err := chainSettingsFromEnv(env(m)); !errors.Is(err, errChainConfig) {
+		t.Fatalf("err = %v", err)
+	}
+}
