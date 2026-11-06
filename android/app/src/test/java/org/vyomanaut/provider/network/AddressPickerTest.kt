@@ -5,22 +5,28 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class AddressPickerTest {
-    private val otherVpn = VpnAddress("10.8.0.2", 24)
-    private val zeroTier = VpnAddress("172.27.40.17", 16)
+    private val otherVpn = NetAddress("10.8.0.2", 24)
+    private val zeroTier = NetAddress("172.27.40.17", 16)
+    private val wifi = NetAddress("192.168.1.23", 24, isVpn = false)
 
     @Test
     fun picksTheAddressInTheCoordinatorsSubnet() {
-        assertEquals("172.27.40.17", AddressPicker.pick(listOf(otherVpn, zeroTier), "172.27.1.5"))
+        assertEquals(zeroTier, AddressPicker.pick(listOf(otherVpn, zeroTier), "172.27.1.5"))
     }
 
     @Test
-    fun fallsBackToTheFirstAddressForAHostName() {
-        assertEquals("10.8.0.2", AddressPicker.pick(listOf(otherVpn, zeroTier), "coordinator.example"))
+    fun aCoordinatorOnTheWifiGetsTheWifiAddressEvenWithZeroTierOn() {
+        assertEquals(wifi, AddressPicker.pick(listOf(zeroTier, wifi), "192.168.1.10"))
     }
 
     @Test
-    fun fallsBackToTheFirstAddressWhenNoSubnetMatches() {
-        assertEquals("10.8.0.2", AddressPicker.pick(listOf(otherVpn, zeroTier), "192.168.1.10"))
+    fun fallsBackToTheFirstVpnAddressForAHostName() {
+        assertEquals(otherVpn, AddressPicker.pick(listOf(wifi, otherVpn, zeroTier), "coordinator.example"))
+    }
+
+    @Test
+    fun fallsBackToAnyAddressWhenThereIsNoVpn() {
+        assertEquals(wifi, AddressPicker.pick(listOf(wifi), "10.99.0.1"))
     }
 
     @Test
@@ -31,8 +37,8 @@ class AddressPickerTest {
     @Test
     fun badPrefixLengthsNeverMatch() {
         assertEquals(
-            "10.8.0.2",
-            AddressPicker.pick(listOf(otherVpn, VpnAddress("172.27.40.17", 0)), "172.27.1.5"),
+            otherVpn,
+            AddressPicker.pick(listOf(otherVpn, NetAddress("172.27.40.17", 0)), "172.27.1.5"),
         )
     }
 

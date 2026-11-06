@@ -171,9 +171,9 @@ object ProviderEngine {
                 is EngineState.Restarting -> retryNow("Network changed")
                 EngineState.Running -> {
                     val current = synchronized(this) { runningAdvertiseAddr }
-                    val now = EngineConfigs.zeroTierAddress(ctx, OnboardingStore(ctx).coordinatorUrl())
+                    val now = EngineConfigs.advertiseAddress(ctx, OnboardingStore(ctx).coordinatorUrl())?.address
                     val reason = when {
-                        now != null && now != current -> "ZeroTier address changed from $current to $now"
+                        now != null && now != current -> "Network address changed from $current to $now"
                         vpnReturned -> "ZeroTier reconnected"
                         else -> null
                     }

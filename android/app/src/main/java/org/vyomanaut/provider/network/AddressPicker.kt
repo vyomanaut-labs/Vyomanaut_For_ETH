@@ -1,14 +1,16 @@
 package org.vyomanaut.provider.network
 
-/** An IPv4 address on a VPN network, with the length of its subnet prefix. */
-data class VpnAddress(val address: String, val prefixLength: Int)
+/** An IPv4 address of this phone, its subnet prefix length, and whether it is on a VPN (ZeroTier) network. */
+data class NetAddress(val address: String, val prefixLength: Int, val isVpn: Boolean = true)
 
 /**
- * Pure rule for which VPN address to advertise to the network.
+ * Pure rule for which of the phone's addresses to advertise to the network.
  *
- * Taking the first VPN IPv4 is wrong when another VPN is on, so prefer the address whose subnet contains the
- * coordinator: the coordinator is reached over ZeroTier, so that subnet is the ZeroTier network. When the
- * coordinator is given by name, or no subnet matches, fall back to the first address.
+ * The coordinator and the uploading clients must be able to open connections TO this address. Prefer the address
+ * whose subnet contains the coordinator, whether that is the ZeroTier network or a shared Wi-Fi/LAN. Taking the
+ * first VPN address is wrong when another VPN is on, and on Android 14-16 phones incoming connections over a VPN
+ * are not delivered to apps at all (found on test devices), so a shared Wi-Fi is the reliable setup.
+ * Fallbacks when nothing matches (coordinator given by name): the first VPN address, then the first other one.
  */
 object AddressPicker {
     private const val IPV4_BITS = 32
@@ -16,16 +18,16 @@ object AddressPicker {
     private const val OCTET_MAX = 255
     private const val BITS_PER_OCTET = 8
 
-    fun pick(candidates: List<VpnAddress>, coordinatorHost: String?): String? {
+    fun pick(candidates: List<NetAddress>, coordinatorHost: String?): NetAddress? {
         if (candidates.isEmpty()) return null
         val coordinator = coordinatorHost?.let(::parseIpv4)
         if (coordinator != null) {
-            candidates.firstOrNull { sameSubnet(it, coordinator) }?.let { return it.address }
+            candidates.firstOrNull { sameSubnet(it, coordinator) }?.let { return it }
         }
-        return candidates.first().address
+        return candidates.firstOrNull { it.isVpn } ?: candidates.first()
     }
 
-    private fun sameSubnet(candidate: VpnAddress, other: Long): Boolean {
+    private fun sameSubnet(candidate: NetAddress, other: Long): Boolean {
         val own = parseIpv4(candidate.address) ?: return false
         val prefix = candidate.prefixLength
         if (prefix !in 1..IPV4_BITS) return false

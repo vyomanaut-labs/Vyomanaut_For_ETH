@@ -10,14 +10,14 @@ data class EngineConfig(
     /** The size declared to the coordinator. May exceed the limit the provider chose (see DemoProfile). */
     val storageGb: Int,
     val listenPort: Int,
-    /** The phone's ZeroTier address, advertised to the network so other nodes can reach it. */
+    /** The phone's address on the coordinator's network (Wi-Fi or ZeroTier), advertised so others can reach it. */
     val advertiseAddr: String,
     val dataDir: String,
 )
 
 sealed interface ConfigResult {
     data class Ready(val config: EngineConfig) : ConfigResult
-    /** [retryable] is true when the setting can fix itself (ZeroTier reconnecting), so a restart may wait for it. */
+    /** [retryable] is true when the setting can fix itself (network reconnecting), so a restart may wait for it. */
     data class Missing(val reason: String, val retryable: Boolean = false) : ConfigResult
 }
 
@@ -42,7 +42,10 @@ object EngineConfigBuilder {
         // Prototype workaround: the coordinator rejects less than COORDINATOR_MIN_DECLARED_GB.
         val storageGb = maxOf(limitGb, DemoProfile.COORDINATOR_MIN_DECLARED_GB)
         val address = vpnAddresses.firstOrNull()
-            ?: return ConfigResult.Missing("Turn on ZeroTier so the phone has a ZeroTier address.", retryable = true)
+            ?: return ConfigResult.Missing(
+                "Connect this phone to the coordinator's network (the same Wi-Fi, or ZeroTier).",
+                retryable = true,
+            )
         return ConfigResult.Ready(
             EngineConfig(
                 coordinatorUrl = coordinatorUrl,

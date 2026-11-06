@@ -2,6 +2,7 @@ package org.vyomanaut.provider.engine
 
 import android.content.Context
 import org.vyomanaut.provider.network.AddressPicker
+import org.vyomanaut.provider.network.NetAddress
 import org.vyomanaut.provider.network.NetworkStatusReader
 import org.vyomanaut.provider.network.OnboardingStore
 import org.vyomanaut.provider.storage.LimitStore
@@ -25,18 +26,18 @@ object EngineConfigs {
             coordinatorUrl = url,
             phone = onboarding.phone(),
             limitBytes = LimitStore(context).limitBytes(),
-            vpnAddresses = listOfNotNull(zeroTierAddress(context, url)),
+            vpnAddresses = listOfNotNull(advertiseAddress(context, url)?.address),
             dataDir = dataDir(context).absolutePath,
         )
     }
 
-    /** The VPN address to advertise: the one on the coordinator's ZeroTier subnet (see [AddressPicker]). */
-    fun zeroTierAddress(context: Context, coordinatorUrl: String): String? {
+    /** The address to advertise: the one on the coordinator's network, Wi-Fi or ZeroTier (see [AddressPicker]). */
+    fun advertiseAddress(context: Context, coordinatorUrl: String): NetAddress? {
         val host = try {
             URI(coordinatorUrl).host
         } catch (e: java.net.URISyntaxException) {
             null
         }
-        return AddressPicker.pick(NetworkStatusReader.read(context).vpnLinkAddresses, host)
+        return AddressPicker.pick(NetworkStatusReader.read(context).allAddresses, host)
     }
 }
