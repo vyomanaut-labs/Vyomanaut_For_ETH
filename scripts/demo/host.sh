@@ -10,6 +10,11 @@
 #   --local       no tunnels: only devices on this Wi-Fi can join
 #   --chain-api   also give the chain API (port 8090) a public address
 #   --providers N local providers to start (default 7)
+#   --advertise-host IP  this machine's address for its own providers (default: autodetect)
+#
+# Chains: run `eval "$(scripts/demo/chain_env.sh)"` and `eval "$(scripts/demo/arkiv_env.sh)"`
+# in the same terminal first; this script passes them through untouched. A RocksDB build
+# environment (CGO_LDFLAGS with -lrocksdb) is kept; otherwise the pure-Go engine is used.
 #   --stop        stop everything
 #
 # Needs Go, Docker and psql (README 4.1), plus cloudflared and bore:
@@ -24,12 +29,13 @@ HOST_DIR="${TMPDIR:-/tmp}/vyomanaut-host"
 LOG_DIR="$HOST_DIR/logs"
 PID_FILE="$HOST_DIR/pids"
 
-NAME="Vyomanaut network"; PROVIDERS=7; LOCAL=0; CHAIN=0; STOP=0; PORT=8080; RELAY_PORT=30300
+ADVERTISE_HOST=""; NAME="Vyomanaut network"; PROVIDERS=7; LOCAL=0; CHAIN=0; STOP=0; PORT=8080; RELAY_PORT=30300
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --name) NAME="$2"; shift 2 ;;
     --providers) PROVIDERS="$2"; shift 2 ;;
     --local) LOCAL=1; shift ;;
+    --advertise-host) ADVERTISE_HOST="$2"; shift 2 ;;
     --chain-api) CHAIN=1; shift ;;
     --stop) STOP=1; shift ;;
     -h | --help) sed -n 2,20p "$0"; exit 0 ;;
@@ -77,7 +83,7 @@ say "Starting Postgres in Docker"
 docker compose -f deployments/dev/docker-compose.yml up -d --wait postgres
 
 say "Starting the relay on port $RELAY_PORT"
-eval "$(scripts/release/purego_env.sh)"
+if [[ "${CGO_LDFLAGS:-}" != *rocksdb* ]]; then eval "$(scripts/release/purego_env.sh)"; fi
 go build -o "$HOST_DIR/relay" ./cmd/relay
 start_bg relay.log "$HOST_DIR/relay" --listen ":$RELAY_PORT" >/dev/null
 
@@ -86,7 +92,7 @@ if command -v ip >/dev/null 2>&1; then
 else
   LAN_IP="$(ipconfig getifaddr en0 2>/dev/null || true)"
 fi
-LAN_IP="${LAN_IP:-127.0.0.1}"
+LAN_IP="${ADVERTISE_HOST:-${LAN_IP:-127.0.0.1}}"
 unset VYOMANAUT_PUBLIC_URL VYOMANAUT_PUBLIC_RELAY VYOMANAUT_PUBLIC_CHAIN_API
 
 if [[ $LOCAL -eq 1 ]]; then
@@ -102,9 +108,9 @@ else
   log="$(start_bg cloudflared.log cloudflared tunnel --no-autoupdate --url "http://localhost:$PORT")"
   PUBLIC_URL="$(wait_for "$log" 'https://[a-z0-9-]+\.trycloudflare\.com' 'The Cloudflare tunnel')"
   export VYOMANAUT_PUBLIC_URL="$PUBLIC_URL" VYOMANAUT_PUBLIC_RELAY="$PUBLIC_RELAY"
-  # up.sh's own providers stay reachable through the same relay.
-  export VYOMANAUT_RELAY_ADDRS="$PUBLIC_RELAY"
-  if [[ $CHAIN -eq 1 ]]; then
+  # up.sh's own providers sit next to the coordinator, so they stay direct (no relay round trip).
+  unset VYOMANAUT_RELAY_ADDRS
+  if [[ $CHAIN -eq 1 || -n "${VYOMANAUT_CHAIN_ENABLED:-}" ]]; then
     log="$(start_bg cloudflared-chain.log cloudflared tunnel --no-autoupdate --url http://localhost:8090)"
     export VYOMANAUT_PUBLIC_CHAIN_API="$(wait_for "$log" 'https://[a-z0-9-]+\.trycloudflare\.com' 'The chain API tunnel')"
   fi

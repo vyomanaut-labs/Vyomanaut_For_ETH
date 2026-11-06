@@ -190,7 +190,7 @@ if ($Local) {
 
     $env:VYOMANAUT_PUBLIC_URL = $PublicUrl
     $env:VYOMANAUT_PUBLIC_RELAY = $PublicRelay
-    if ($ChainApi) {
+    if ($ChainApi -or $env:VYOMANAUT_CHAIN_ENABLED) {
         $cf2Log = Start-Hidden $Cloudflared @("tunnel", "--no-autoupdate", "--url", "http://localhost:8090") "cloudflared-chain.log"
         $env:VYOMANAUT_PUBLIC_CHAIN_API = Wait-ForMatch @($cf2Log, "$cf2Log.err") "https://[a-z0-9-]+\.trycloudflare\.com" "The chain API tunnel"
     }
