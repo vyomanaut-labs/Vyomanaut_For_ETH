@@ -9,10 +9,17 @@ import android.content.pm.ServiceInfo
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import org.vyomanaut.provider.MainActivity
 import org.vyomanaut.provider.R
 import org.vyomanaut.provider.engine.ConfigResult
 import org.vyomanaut.provider.engine.EngineConfigs
+import org.vyomanaut.provider.engine.EngineState
 import org.vyomanaut.provider.engine.ProviderEngine
 
 /**
@@ -22,6 +29,7 @@ import org.vyomanaut.provider.engine.ProviderEngine
 class ProviderService : Service() {
 
     private val locks by lazy { PowerLocks(this) }
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -40,21 +48,24 @@ class ProviderService : Service() {
         locks.acquire()
         ProviderRuntime.setRunning(true)
 
-        val started = when (val result = EngineConfigs.fromDevice(this, requireRegistered = true)) {
+        when (val result = EngineConfigs.fromDevice(this, requireRegistered = true)) {
             is ConfigResult.Missing -> {
                 ProviderEngine.fail(result.reason)
-                false
+                stopSelf()
+                return START_NOT_STICKY
             }
             is ConfigResult.Ready -> ProviderEngine.startRun(this, result.config)
         }
-        if (!started) {
+        // Do not keep a "running" service around a provider that has failed.
+        scope.launch {
+            ProviderEngine.state.first { it is EngineState.Failed }
             stopSelf()
-            return START_NOT_STICKY
         }
         return START_STICKY
     }
 
     override fun onDestroy() {
+        scope.cancel()
         ProviderEngine.shutdown()
         locks.release()
         ProviderRuntime.setRunning(false)
