@@ -22,13 +22,14 @@ object EngineConfigs {
         if (requireRegistered && !EngineStore(context).isRegisteredFor(url)) {
             return ConfigResult.Missing("Register this phone first (Home tab).")
         }
-        return EngineConfigBuilder.build(
+        val built = EngineConfigBuilder.build(
             coordinatorUrl = url,
             phone = onboarding.phone(),
             limitBytes = LimitStore(context).limitBytes(),
             vpnAddresses = listOfNotNull(advertiseAddress(context, url)?.address),
             dataDir = dataDir(context).absolutePath,
         )
+        return if (built is ConfigResult.Ready) ConfigResult.Ready(built.config.copy(relayAddr = onboarding.relayAddr())) else built
     }
 
     /** The address to advertise: the one on the coordinator's network, Wi-Fi or ZeroTier (see [AddressPicker]). */

@@ -24,6 +24,7 @@ import org.vyomanaut.provider.network.CheckResult
 import org.vyomanaut.provider.network.CoordinatorCheck
 import org.vyomanaut.provider.network.NetworkRules
 import org.vyomanaut.provider.network.NetworkStatus
+import org.vyomanaut.provider.network.RelayRules
 import org.vyomanaut.provider.network.NetworkStatusReader
 import org.vyomanaut.provider.network.OnboardingStore
 import org.vyomanaut.provider.ui.pixel.PixelButton
@@ -42,6 +43,7 @@ fun NetworkScreen() {
     var status by remember { mutableStateOf(NetworkStatusReader.read(context)) }
     var urlText by remember { mutableStateOf(store.coordinatorUrl()) }
     var phoneText by remember { mutableStateOf(store.phone()) }
+    var relayText by remember { mutableStateOf(store.savedRelay()) }
     var inputError by remember { mutableStateOf<String?>(null) }
     var checking by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<CheckResult?>(null) }
@@ -80,7 +82,7 @@ fun NetworkScreen() {
             }
         }
 
-        AdvertisedAddressPanel(status, store.coordinatorUrl())
+        AdvertisedAddressPanel(status, store.coordinatorUrl(), store.relayAddr())
 
         PixelPanel(title = "Coordinator") {
             PixelTextField(
@@ -96,6 +98,13 @@ fun NetworkScreen() {
                 label = "Phone number",
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
             )
+            PixelTextField(
+                value = relayText,
+                onValueChange = { relayText = it },
+                label = "Relay (empty = coordinator host :${RelayRules.DEFAULT_RELAY_PORT}, or off)",
+                placeholder = RelayRules.defaultFor(urlText) ?: "10.35.114.52:${RelayRules.DEFAULT_RELAY_PORT}",
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            )
             inputError?.let { Text(it, color = PixelColors.Bad) }
             PixelButton(
                 text = if (checking) "Checking..." else "Save and test connection",
@@ -108,9 +117,12 @@ fun NetworkScreen() {
                             inputError = "Enter the full address, for example http://10.35.114.52:8080"
                         phone == null ->
                             inputError = "Enter a phone number with 10 to 15 digits"
+                        RelayRules.problemWith(relayText) != null ->
+                            inputError = RelayRules.problemWith(relayText)
                         else -> {
                             inputError = null
                             store.save(url, phone)
+                            store.saveRelay(relayText)
                             urlText = url
                             phoneText = phone
                             status = NetworkStatusReader.read(context)
@@ -146,7 +158,7 @@ fun NetworkScreen() {
  * USB tethering), so ZeroTier only works for heartbeats there. A Wi-Fi shared with the coordinator works.
  */
 @Composable
-private fun AdvertisedAddressPanel(status: NetworkStatus, coordinatorUrl: String) {
+private fun AdvertisedAddressPanel(status: NetworkStatus, coordinatorUrl: String, relay: String?) {
     val host = try {
         java.net.URI(coordinatorUrl).host
     } catch (e: java.net.URISyntaxException) {
@@ -159,12 +171,17 @@ private fun AdvertisedAddressPanel(status: NetworkStatus, coordinatorUrl: String
             return@PixelPanel
         }
         Text("Advertised to the network: ${picked.address} " + if (picked.isVpn) "(ZeroTier)" else "(Wi-Fi / local network)")
-        if (picked.isVpn) {
+        if (picked.isVpn && relay != null) {
             Text(
-                "Warning: Android may not deliver incoming connections over a VPN to apps. Audits and file uploads " +
-                    "connect to this phone, so they can fail over ZeroTier even though heartbeats work. For the demo, " +
-                    "put this phone on the same Wi-Fi as the coordinator and enter the coordinator's Wi-Fi address below.",
-                color = PixelColors.Gold,
+                "Android does not deliver incoming ZeroTier connections to apps, so audits and file uploads reach " +
+                    "this phone through the relay at $relay. Run `go run ./cmd/relay` on that machine.",
+                color = PixelColors.Good,
+            )
+        } else if (picked.isVpn) {
+            Text(
+                "Warning: the relay is off. Android does not deliver incoming ZeroTier connections to apps, so " +
+                    "audits and file uploads cannot reach this phone. Set a relay below (or leave it empty for the default).",
+                color = PixelColors.Bad,
             )
         } else {
             Text("Same network as the coordinator: audits and uploads can reach this phone.", color = PixelColors.Good)

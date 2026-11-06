@@ -13,6 +13,11 @@ data class EngineConfig(
     /** The phone's address on the coordinator's network (Wi-Fi or ZeroTier), advertised so others can reach it. */
     val advertiseAddr: String,
     val dataDir: String,
+    /**
+     * Relay node ("host:port") the provider stays reachable through, or null. Needed on ZeroTier: Android never
+     * delivers new incoming VPN connections to an app, so audits and uploads must come in through a relay.
+     */
+    val relayAddr: String? = null,
 )
 
 sealed interface ConfigResult {
@@ -80,10 +85,11 @@ object ProviderArgs {
         "--advertise-addr=${config.advertiseAddr}",
     )
 
-    fun run(config: EngineConfig): List<String> = listOf(
+    fun run(config: EngineConfig): List<String> = listOfNotNull(
         "run",
         "--mode=demo",
         "--microservice-url=${config.coordinatorUrl}",
+        config.relayAddr?.takeIf { it.isNotBlank() }?.let { "--relay-addrs=$it" },
         "--data-dir=${config.dataDir}",
         "--declared-storage-gb=${config.storageGb}",
         "--listen-port=${config.listenPort}",
