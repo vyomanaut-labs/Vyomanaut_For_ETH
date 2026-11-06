@@ -187,7 +187,7 @@ fun HomeScreen() {
         PixelPanel(title = "Network profile: demo") {
             Text("Erasure code RS(${DemoProfile.DATA_SHARDS},${DemoProfile.TOTAL_SHARDS}), minimum ${DemoProfile.MIN_ACTIVE_PROVIDERS} providers")
             Text("Audit period ${DemoProfile.AUDIT_PERIOD_MINUTES} min, departure after ${DemoProfile.DEPARTURE_THRESHOLD_MINUTES} min offline")
-            Text("Payments: mock (prototype)")
+            Text("Payments: see the Payments tab")
         }
     }
 }

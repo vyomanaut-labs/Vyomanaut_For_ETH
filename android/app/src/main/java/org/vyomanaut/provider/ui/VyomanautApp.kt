@@ -16,10 +16,12 @@ import org.vyomanaut.provider.ui.pixel.PixelNavBar
 import org.vyomanaut.provider.ui.pixel.SpaceBackground
 import org.vyomanaut.provider.ui.screens.HomeScreen
 import org.vyomanaut.provider.ui.screens.NetworkScreen
+import org.vyomanaut.provider.ui.screens.PaymentsScreen
 import org.vyomanaut.provider.ui.screens.StorageScreen
 
 enum class Tab(val label: String) {
     Home("Home"),
+    Payments("Payments"),
     Storage("Storage"),
     Network("Network"),
 }
@@ -44,6 +46,7 @@ fun VyomanautApp() {
             Box(modifier = Modifier.padding(padding).fillMaxSize()) {
                 when (tab) {
                     Tab.Home -> HomeScreen()
+                    Tab.Payments -> PaymentsScreen()
                     Tab.Storage -> StorageScreen()
                     Tab.Network -> NetworkScreen()
                 }
