@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # scripts/demo/down.ps1 — M17-E Session 17.8.1 (ADR-084).
 #
 # Windows equivalent of down.sh — see that file's header for the full

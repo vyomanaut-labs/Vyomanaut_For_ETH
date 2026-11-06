@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # scripts/demo/up.ps1 — M17-E Session 17.8.1 (ADR-084, F-D-2/F-D-3/F-D-4).
 #
 # Windows equivalent of up.sh. Windows is the primary demo-rig platform

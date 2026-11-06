@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # scripts/demo/kill_provider.ps1 — Windows equivalent of kill_provider.sh.
 #
 # [Added, M18 Stage 2 — Windows demo run] Mirrors kill_provider.sh's own
