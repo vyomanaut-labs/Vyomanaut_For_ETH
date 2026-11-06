@@ -205,7 +205,7 @@ func (g *generator) GenerateChunk(ctx context.Context, providerID uuid.UUID) (ch
 		return chunkID, fmt.Errorf("vettingchunk: GenerateChunk: open chunk-upload stream: %w", err)
 	}
 	defer func() { _ = stream.Close() }()
-	if err := stream.SetDeadline(time.Now().Add(chunkUploadTimeout)); err != nil {
+	if err := stream.SetDeadline(time.Now().Add(p2p.TransferTimeout(addrs, chunkUploadTimeout))); err != nil {
 		return chunkID, fmt.Errorf("vettingchunk: GenerateChunk: set deadline: %w", err)
 	}
 

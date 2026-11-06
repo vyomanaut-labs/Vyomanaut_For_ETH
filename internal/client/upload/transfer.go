@@ -301,7 +301,7 @@ func (o *Orchestrator) uploadOneShard(ctx context.Context, sa shardAssignment, t
 		return 0, fmt.Errorf("upload: uploadOneShard: open chunk-upload stream: %w", err)
 	}
 	defer func() { _ = stream.Close() }()
-	if err := stream.SetDeadline(time.Now().Add(chunkUploadTimeout)); err != nil {
+	if err := stream.SetDeadline(time.Now().Add(p2p.TransferTimeout(addrs, chunkUploadTimeout))); err != nil {
 		return 0, fmt.Errorf("upload: uploadOneShard: set deadline: %w", err)
 	}
 
