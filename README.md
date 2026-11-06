@@ -17,7 +17,7 @@ Built by [Vyomanaut Labs](https://www.linkedin.com/company/vyomanaut-labs) and e
 | **Arkiv** | Every audit result is published where anyone can read and check it | [Our Arkiv writer wallet](https://rabdi.explorer.arkiv.network/address/0x1044E36804C0cED0243529dc6Dc865a3E0b727B9) |
 
 > **Anyone can run a Vyomanaut network.** Bring your own machine, keys, wallets and contracts.
-> Section 4 shows how, on free hosting.
+> Section 4 shows how, on free hosting with no credit card.
 
 ---
 
@@ -191,8 +191,8 @@ contracts. Nothing of ours is needed.
 
 ### 4.1 What you need
 
-- A machine people can reach: a cloud VM with a public IP (free options in 4.7), or a laptop on a
-  shared Wi-Fi or ZeroTier network.
+- A machine people can reach: your laptop with free tunnels, a free student cloud VM, or a laptop
+  on a shared Wi-Fi or ZeroTier network (all in 4.7, none needs a credit card).
 - Linux or macOS with **Go 1.26+**, **Docker** and the **psql** client. Windows works too with
   `up.ps1` (see `guides/operator_windows_guide.md`).
 - **No RocksDB:** `eval "$(scripts/release/purego_env.sh)"` makes every build use the pure-Go
@@ -287,7 +287,7 @@ grep -E "EXTENSION|CHAIN|ARKIV" /tmp/vyomanaut-demo/logs/microservice.log
 | Port | For |
 | --- | --- |
 | 8080 | the coordinator API (providers, owners, the app) |
-| 8081–8087 | the 7 providers `up.sh` starts on this machine |
+| 8081–8087 | the 7 providers `up.sh` starts, **only** if you did not set `VYOMANAUT_RELAY_ADDRS` (then they are reached through the relay) |
 | 8090 | the chain API (owners binding wallets, the app's Payments tab) |
 | 30300 | the relay (phones and PCs behind routers) |
 
@@ -299,27 +299,88 @@ Share `http://<MY_IP>:8080`. When someone registers, read them their code:
 $BIN_DIR/operator otp --mode=demo --otp-delivery-log=$OTP_LOG <their phone number>
 ```
 
-### 4.7 Host it for free
+### 4.7 Host it for free (no credit card)
 
-Everything on chain is free: both chains are test networks and their faucets give tokens. The only
-thing to host is the coordinator, which needs a reachable address.
+**The chains need no hosting.** Both are public test networks: the contracts already live on
+Whitechain Sepolia, Arkiv entities live on Rabdi, and anyone can open the transactions in the
+explorers at any time, even when your coordinator is off. Faucets give the gas tokens for free.
 
-| Option | Cost | Good for |
+The only thing to host is **the coordinator and its relay**, and only while people are using your
+network. Thanks to the relay, just three things must be reachable from outside:
+
+| What | Local port | Kind |
 | --- | --- | --- |
-| **Oracle Cloud "Always Free"** Ampere VM (up to 4 cores, 24 GB, public IP) | free (card check at sign-up) | a public network anyone can join from anywhere |
-| **Google Cloud e2-micro** (1 GB) | free tier | the coordinator alone; put providers elsewhere |
-| **A laptop + ZeroTier** (free plan) | free | a room or a campus; phones still use the relay |
+| Coordinator API | 8080 | HTTP |
+| Chain API (optional: wallet binding, the app's Payments tab) | 8090 | HTTP |
+| Relay | 30300 | raw TCP |
 
-On a cloud VM (Ubuntu):
+Every provider (phones, PCs, and the providers `up.sh` starts) is reached **through the relay**,
+so no provider port needs opening.
 
-1. Open the ports in section 4.5 in the cloud firewall, **and** in the VM:
-   `sudo iptables -I INPUT -p tcp -m multiport --dports 8080:8090,30300 -j ACCEPT`.
-2. Let the VM reach its own public address (cloud NAT often cannot loop back):
-   `sudo ip addr add <PUBLIC-IP>/32 dev lo`.
-3. Install Go, Docker and psql, then follow 4.1 to 4.4 with `MY_IP=<PUBLIC-IP>`. Run `up.sh` and the
-   relay inside `tmux` so they survive logging out.
+#### Option A: your laptop plus free tunnels (no account, no card)
 
-> The demo network speaks plain HTTP. Fine for test networks; put TLS in front before real data.
+Run the network on a laptop exactly as in 4.4, then give it public addresses with two free
+tunnels:
+
+```bash
+# Terminal 2: the relay
+go run ./cmd/relay --listen :30300
+
+# Terminal 3: a public TCP address for the relay (https://github.com/ekzhang/bore)
+#   macOS: brew install bore-cli     other: download from its releases page
+bore local 30300 --to bore.pub
+#   → prints: listening at bore.pub:41234            (your port will differ)
+
+# Terminal 4: a public HTTPS address for the coordinator (Cloudflare quick tunnel, no account)
+#   macOS: brew install cloudflared   other: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+cloudflared tunnel --url http://localhost:8080
+#   → prints: https://<random-words>.trycloudflare.com
+
+# Terminal 5 (optional): the chain API
+cloudflared tunnel --url http://localhost:8090
+```
+
+Start `up.sh` with the relay's public address, so its own 7 providers are reachable too:
+
+```bash
+export VYOMANAUT_RELAY_ADDRS=bore.pub:41234
+scripts/demo/up.sh --providers 7 --advertise-host "$MY_IP"
+```
+
+What people enter:
+- **Coordinator:** `https://<random-words>.trycloudflare.com`.
+- **Relay:** `bore.pub:41234`, in the app's Network tab or as `--relay-addrs` on a PC.
+- **Chain API:** the second tunnel's URL, in the app's Payments tab under *Chain settings*.
+
+> Both tunnel addresses change each time you restart the tunnel: start them once, before you
+> share anything. `bore.pub` and quick tunnels are free community services with no uptime promise,
+> so keep the ZeroTier set-up (option C) as a fallback.
+
+#### Option B: Azure for Students (no card, college email)
+
+[Azure for Students](https://azure.microsoft.com/free/students) gives US$100 of credit with a
+college email and **no credit card**. A small Ubuntu VM (B1s or B2s) with a public IP runs the
+whole network:
+
+1. Create the VM and allow inbound TCP **8080, 8090 and 30300** in its network security group.
+2. Install Go, Docker and psql, then follow 4.1 to 4.4 with `MY_IP=<public IP>` and
+   `export VYOMANAUT_RELAY_ADDRS=<public IP>:30300`.
+3. Let the VM reach its own public address (cloud NAT often cannot loop back):
+   `sudo ip addr add <public IP>/32 dev lo`.
+4. Run `up.sh` and the relay inside `tmux` so they survive logging out.
+
+The same steps work on any VM with a public IP. Oracle Cloud "Always Free" and Google Cloud's free
+tier also work, but both ask for a card at sign-up.
+
+#### Option C: a laptop on ZeroTier (free plan)
+
+What the campus demo used: create a ZeroTier network, have every PC join it, and run 4.4 with
+`MY_IP` set to the laptop's ZeroTier address. Phones join ZeroTier too, and the relay at
+`<MY_IP>:30300` carries their audits and uploads. Good for a room; everyone must install ZeroTier
+and be approved on the network.
+
+> The demo network speaks plain HTTP inside ZeroTier or on a VM. Fine for test networks; put TLS in
+> front before real data. (Option A's coordinator address is already HTTPS.)
 
 ---
 

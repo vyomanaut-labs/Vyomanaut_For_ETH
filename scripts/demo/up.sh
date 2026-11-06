@@ -85,6 +85,12 @@ Usage: scripts/demo/up.sh [--providers N] [--storage-gb N] [--advertise-addr ADD
                         script until now. Off by default. Only turn this on
                         on the isolated lab mesh, same rule as join.sh's
                         --metrics-addr.
+
+Environment:
+  VYOMANAUT_RELAY_ADDRS  Relay node(s) the LOCAL providers stay reachable through
+                        (host:port, e.g. a public tunnel to this machine's
+                        cmd/relay). Set it when uploaders outside this machine's
+                        network must reach these providers. Empty = direct only.
 EOF
 }
 
@@ -334,6 +340,12 @@ for (( i=1; i<=PROVIDERS; i++ )); do
   if [[ -n "$ADVERTISE_ADDR" ]]; then
     ADVERTISE_FLAG=(--advertise-addr "$ADVERTISE_ADDR")
   fi
+  # Same bash-3.2-safe empty-array pattern. A relay lets clients outside this
+  # machine's network reach the local providers (cmd/relay, internal/p2p/relay.go).
+  RELAY_FLAG=()
+  if [[ -n "${VYOMANAUT_RELAY_ADDRS:-}" ]]; then
+    RELAY_FLAG=(--relay-addrs "$VYOMANAUT_RELAY_ADDRS")
+  fi
 
   log "onboarding local provider $i/$PROVIDERS (phone=$PHONE, port=$PROVIDER_PORT)"
   onboard_log="$LOG_DIR/onboard-$i.log"
@@ -416,6 +428,7 @@ for (( i=1; i<=PROVIDERS; i++ )); do
       --declared-storage-gb="$STORAGE_GB" \
       --listen-port="$PROVIDER_PORT" \
       "${ADVERTISE_FLAG[@]+"${ADVERTISE_FLAG[@]}"}" \
+      "${RELAY_FLAG[@]+"${RELAY_FLAG[@]}"}" \
       > "$LOG_DIR/provider-$i.log" 2>&1 &
   echo "$!" >> "$PID_FILE"
 done
