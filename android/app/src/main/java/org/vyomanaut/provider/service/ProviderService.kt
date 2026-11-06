@@ -21,6 +21,8 @@ import org.vyomanaut.provider.engine.ProviderEngine
  */
 class ProviderService : Service() {
 
+    private val locks by lazy { PowerLocks(this) }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -35,6 +37,7 @@ class ProviderService : Service() {
             buildNotification(),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
         )
+        locks.acquire()
         ProviderRuntime.setRunning(true)
 
         val started = when (val result = EngineConfigs.fromDevice(this, requireRegistered = true)) {
@@ -53,6 +56,7 @@ class ProviderService : Service() {
 
     override fun onDestroy() {
         ProviderEngine.shutdown()
+        locks.release()
         ProviderRuntime.setRunning(false)
         super.onDestroy()
     }
