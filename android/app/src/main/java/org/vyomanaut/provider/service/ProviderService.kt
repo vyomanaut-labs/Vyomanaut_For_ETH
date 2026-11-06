@@ -1,5 +1,6 @@
 package org.vyomanaut.provider.service
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -11,9 +12,9 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.vyomanaut.provider.MainActivity
 import org.vyomanaut.provider.R
@@ -21,15 +22,20 @@ import org.vyomanaut.provider.engine.ConfigResult
 import org.vyomanaut.provider.engine.EngineConfigs
 import org.vyomanaut.provider.engine.EngineState
 import org.vyomanaut.provider.engine.ProviderEngine
+import org.vyomanaut.provider.engine.isActive
 
 /**
  * Foreground service that keeps the provider alive while the phone is in the background.
- * It starts the Go provider program on start and stops it when the service ends.
+ *
+ * The provider itself is supervised by [ProviderEngine]: this service starts it once, mirrors the engine's
+ * real state in the notification, and stops itself only when the engine gives up. It never claims "running"
+ * over a provider that has died.
  */
 class ProviderService : Service() {
 
     private val locks by lazy { PowerLocks(this) }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var watchJob: Job? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -42,24 +48,31 @@ class ProviderService : Service() {
         ServiceCompat.startForeground(
             this,
             NOTIFICATION_ID,
-            buildNotification(),
+            buildNotification(textFor(ProviderEngine.state.value)),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
         )
         locks.acquire()
         ProviderRuntime.setRunning(true)
 
-        when (val result = EngineConfigs.fromDevice(this, requireRegistered = true)) {
-            is ConfigResult.Missing -> {
-                ProviderEngine.fail(result.reason)
-                stopSelf()
-                return START_NOT_STICKY
-            }
-            is ConfigResult.Ready -> ProviderEngine.startRun(this, result.config)
-        }
-        // Do not keep a "running" service around a provider that has failed.
-        scope.launch {
-            ProviderEngine.state.first { it is EngineState.Failed }
+        // A second start (Start pressed twice, or Android redelivering a sticky start) must not restart a provider
+        // that is already up or recovering.
+        if (watchJob != null && ProviderEngine.state.value.isActive) return START_STICKY
+
+        val check = EngineConfigs.fromDevice(this, requireRegistered = true)
+        if (check is ConfigResult.Missing && !check.retryable) {
+            ProviderEngine.fail(check.reason)
             stopSelf()
+            return START_NOT_STICKY
+        }
+        // Rebuilt by the engine on every (re)start, so a retryable gap such as ZeroTier still connecting is fine.
+        ProviderEngine.startRun(this)
+        watchJob?.cancel()
+        watchJob = scope.launch {
+            ProviderEngine.state.collect { state ->
+                getSystemService(NotificationManager::class.java)
+                    .notify(NOTIFICATION_ID, buildNotification(textFor(state)))
+                if (state is EngineState.Failed) stopSelf()
+            }
         }
         return START_STICKY
     }
@@ -72,6 +85,14 @@ class ProviderService : Service() {
         super.onDestroy()
     }
 
+    private fun textFor(state: EngineState): String = when (state) {
+        EngineState.Running -> "Online: storing shards and answering audits"
+        EngineState.Starting -> "Starting the provider..."
+        is EngineState.Restarting -> "Reconnecting: restart ${state.attempt} in ${state.delaySeconds} s"
+        is EngineState.Failed -> "Stopped: ${state.reason}"
+        else -> "Stopping..."
+    }
+
     private fun ensureChannel() {
         val manager = getSystemService(NotificationManager::class.java)
         val channel = NotificationChannel(
@@ -82,7 +103,7 @@ class ProviderService : Service() {
         manager.createNotificationChannel(channel)
     }
 
-    private fun buildNotification(): android.app.Notification {
+    private fun buildNotification(text: String): Notification {
         val openApp = PendingIntent.getActivity(
             this,
             REQUEST_OPEN,
@@ -98,10 +119,11 @@ class ProviderService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle(getString(R.string.app_name))
-            .setContentText("Provider is running")
+            .setContentText(text)
             .setContentIntent(openApp)
             .addAction(0, "Stop", stop)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .build()
     }
 

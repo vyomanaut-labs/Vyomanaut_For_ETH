@@ -1,6 +1,7 @@
 package org.vyomanaut.provider.engine
 
 import android.content.Context
+import android.os.SystemClock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -8,6 +9,8 @@ import java.io.File
 import java.io.IOException
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 
 sealed interface EngineState {
     data object Idle : EngineState
@@ -16,8 +19,15 @@ sealed interface EngineState {
     data object Verifying : EngineState
     data object Starting : EngineState
     data object Running : EngineState
+
+    /** The provider exited on its own; the app restarts it after [delaySeconds]. */
+    data class Restarting(val attempt: Int, val delaySeconds: Long, val reason: String) : EngineState
     data class Failed(val reason: String) : EngineState
 }
+
+/** True while the provider is meant to be running: started, running, or waiting to restart. */
+val EngineState.isActive: Boolean
+    get() = this is EngineState.Starting || this is EngineState.Running || this is EngineState.Restarting
 
 /**
  * Runs the Go provider (bundled as libprovider.so) as a child process: `onboard` once, then `run`.
@@ -26,6 +36,10 @@ sealed interface EngineState {
  * Starting and stopping happen on one background thread, in order: stopping waits for the old program
  * to exit, so it must never run on the main thread, and a new program never starts before the old one
  * has released its port and database.
+ *
+ * While running, the engine supervises the provider: if it exits on its own it is restarted with growing
+ * waits ([RestartPolicy]), and each restart rebuilds the configuration so a changed ZeroTier address is
+ * picked up.
  */
 object ProviderEngine {
     const val OTP_PROMPT = "Enter the 6-digit code"
@@ -51,15 +65,27 @@ object ProviderEngine {
     private var stopRequested = false
     private val pending = StringBuilder()
 
+    // Supervision of `provider run`.
+    private var appContext: Context? = null
+    private var keepRunning = false
+    private var attempt = 0
+    private var runStartedAt = 0L
+    private var scheduledRestart: ScheduledFuture<*>? = null
+
     // Android only lets an app run executables from its native library folder.
     fun binaryFile(context: Context): File = File(context.applicationInfo.nativeLibraryDir, BINARY_NAME)
 
     fun isBinaryAvailable(context: Context): Boolean = binaryFile(context).exists()
 
     fun startOnboarding(context: Context, config: EngineConfig) {
-        val appContext = context.applicationContext
-        mutableState.value = EngineState.Registering
-        worker.execute { launch(appContext, config, ProviderArgs.onboard(config), isOnboarding = true) }
+        val ctx = context.applicationContext
+        synchronized(this) {
+            keepRunning = false
+            cancelScheduledRestart()
+            mutableLog.value = emptyList()
+            mutableState.value = EngineState.Registering
+        }
+        worker.execute { launch(ctx, config, ProviderArgs.onboard(config), isOnboarding = true) }
     }
 
     /** Sends the 6-digit code to the waiting onboarding program. Returns false if the code is malformed. */
@@ -73,15 +99,30 @@ object ProviderEngine {
         return true
     }
 
-    /** Starts `provider run` in the background. The outcome shows up in [state]. */
-    fun startRun(context: Context, config: EngineConfig) {
-        val appContext = context.applicationContext
-        mutableState.value = EngineState.Starting
-        worker.execute {
-            if (launch(appContext, config, ProviderArgs.run(config), isOnboarding = false)) {
-                mutableState.value = EngineState.Running
-            }
+    /**
+     * Starts and supervises `provider run` in the background. The outcome shows up in [state]: Running,
+     * Restarting while it recovers from an exit, or Failed when it cannot start or gave up.
+     */
+    fun startRun(context: Context) {
+        synchronized(this) {
+            appContext = context.applicationContext
+            keepRunning = true
+            attempt = 0
+            cancelScheduledRestart()
+            mutableLog.value = emptyList()
+            mutableState.value = EngineState.Starting
         }
+        worker.execute { runOnce() }
+    }
+
+    /** Skips the remaining wait when the provider is waiting to restart (for example, the network came back). */
+    fun retryNow(reason: String) {
+        synchronized(this) {
+            if (!keepRunning || mutableState.value !is EngineState.Restarting) return
+            cancelScheduledRestart()
+            appendLog("[APP] $reason: restarting now")
+        }
+        worker.execute { runOnce() }
     }
 
     @Synchronized
@@ -89,14 +130,69 @@ object ProviderEngine {
         mutableState.value = EngineState.Failed(reason)
     }
 
-    /** Stops the child process in the background. A Failed state is kept so the reason stays visible. */
+    /** Stops the provider in the background and ends supervision. A Failed state is kept so the reason stays visible. */
     fun shutdown() {
+        synchronized(this) {
+            keepRunning = false
+            cancelScheduledRestart()
+        }
         worker.execute {
             stopCurrent()
             synchronized(this) {
                 if (mutableState.value !is EngineState.Failed) mutableState.value = EngineState.Idle
             }
         }
+    }
+
+    /** Worker thread: builds a fresh configuration (the ZeroTier address may have changed) and launches. */
+    private fun runOnce() {
+        val ctx = synchronized(this) { if (keepRunning) appContext else null } ?: return
+        when (val result = EngineConfigs.fromDevice(ctx, requireRegistered = true)) {
+            is ConfigResult.Missing ->
+                if (result.retryable) scheduleRestart(result.reason, uptimeMs = 0) else giveUp(result.reason)
+
+            is ConfigResult.Ready ->
+                if (launch(ctx, result.config, ProviderArgs.run(result.config), isOnboarding = false)) {
+                    synchronized(this) {
+                        runStartedAt = SystemClock.elapsedRealtime()
+                        if (keepRunning) mutableState.value = EngineState.Running
+                    }
+                } else {
+                    giveUp((mutableState.value as? EngineState.Failed)?.reason ?: "The provider could not start.")
+                }
+        }
+    }
+
+    @Synchronized
+    private fun scheduleRestart(reason: String, uptimeMs: Long) {
+        if (!keepRunning) return
+        attempt = RestartPolicy.nextAttempt(attempt, uptimeMs)
+        if (RestartPolicy.shouldGiveUp(attempt)) {
+            giveUp("The provider stopped ${RestartPolicy.MAX_ATTEMPTS} times in a row. Last problem: $reason")
+            return
+        }
+        val delay = RestartPolicy.delaySeconds(attempt)
+        appendLog("[APP] $reason. Restart ${attempt}/${RestartPolicy.MAX_ATTEMPTS} in $delay s.")
+        mutableState.value = EngineState.Restarting(attempt, delay, reason)
+        cancelScheduledRestart()
+        scheduledRestart = worker.schedule({ runOnce() }, delay, TimeUnit.SECONDS)
+    }
+
+    @Synchronized
+    private fun giveUp(reason: String) {
+        keepRunning = false
+        cancelScheduledRestart()
+        mutableState.value = EngineState.Failed(reason)
+    }
+
+    private fun cancelScheduledRestart() {
+        scheduledRestart?.cancel(false)
+        scheduledRestart = null
+    }
+
+    @Synchronized
+    private fun appendLog(line: String) {
+        mutableLog.value = (mutableLog.value + line).takeLast(MAX_LOG_LINES)
     }
 
     /** Detaches the current program (its output and exit are ignored from now on) and waits for it to exit. */
@@ -125,7 +221,6 @@ object ProviderEngine {
         val child = ProviderProcess(binary, context.filesDir, context.cacheDir)
         synchronized(this) {
             val myGeneration = generation
-            mutableLog.value = emptyList()
             pending.setLength(0)
             stopRequested = false
             try {
@@ -164,14 +259,20 @@ object ProviderEngine {
     private fun handleExit(forGeneration: Int, store: EngineStore, config: EngineConfig, isOnboarding: Boolean, code: Int) {
         if (forGeneration != generation) return
         process = null
-        mutableState.value = when {
-            stopRequested -> EngineState.Idle
+        when {
+            stopRequested -> mutableState.value = EngineState.Idle
             isOnboarding && code == 0 -> {
                 store.markRegistered(config.coordinatorUrl)
-                EngineState.Idle
+                mutableState.value = EngineState.Idle
             }
-            isOnboarding -> EngineState.Failed("Registration failed (exit code $code). See the details below.")
-            else -> EngineState.Failed("Provider stopped unexpectedly (exit code $code). See the details below.")
+            isOnboarding -> mutableState.value =
+                EngineState.Failed("Registration failed (exit code $code). See the details below.")
+            keepRunning -> scheduleRestart(
+                "Provider stopped unexpectedly (exit code $code)",
+                uptimeMs = SystemClock.elapsedRealtime() - runStartedAt,
+            )
+            else -> mutableState.value =
+                EngineState.Failed("Provider stopped unexpectedly (exit code $code). See the details below.")
         }
     }
 }

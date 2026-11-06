@@ -17,7 +17,8 @@ data class EngineConfig(
 
 sealed interface ConfigResult {
     data class Ready(val config: EngineConfig) : ConfigResult
-    data class Missing(val reason: String) : ConfigResult
+    /** [retryable] is true when the setting can fix itself (ZeroTier reconnecting), so a restart may wait for it. */
+    data class Missing(val reason: String, val retryable: Boolean = false) : ConfigResult
 }
 
 /** Pure rules for turning the app's saved settings into a provider configuration. */
@@ -41,7 +42,7 @@ object EngineConfigBuilder {
         // Prototype workaround: the coordinator rejects less than COORDINATOR_MIN_DECLARED_GB.
         val storageGb = maxOf(limitGb, DemoProfile.COORDINATOR_MIN_DECLARED_GB)
         val address = vpnAddresses.firstOrNull()
-            ?: return ConfigResult.Missing("Turn on ZeroTier so the phone has a ZeroTier address.")
+            ?: return ConfigResult.Missing("Turn on ZeroTier so the phone has a ZeroTier address.", retryable = true)
         return ConfigResult.Ready(
             EngineConfig(
                 coordinatorUrl = coordinatorUrl,

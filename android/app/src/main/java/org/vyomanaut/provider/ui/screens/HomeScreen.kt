@@ -41,6 +41,7 @@ import org.vyomanaut.provider.engine.EngineState
 import org.vyomanaut.provider.engine.EngineStore
 import org.vyomanaut.provider.engine.ProviderArgs
 import org.vyomanaut.provider.engine.ProviderEngine
+import org.vyomanaut.provider.engine.RestartPolicy
 import org.vyomanaut.provider.network.OnboardingStore
 import org.vyomanaut.provider.power.ChecklistStore
 import org.vyomanaut.provider.power.OemGuides
@@ -106,9 +107,18 @@ fun HomeScreen() {
     ) {
         ScreenTitle("Vyomanaut", "Provider node")
 
-        PixelPanel(title = if (running) "Status: online" else "Status: offline") {
+        // The title follows what the provider is actually doing, not whether the service was started.
+        PixelPanel(title = "Status: " + statusLabel(engineState)) {
             (engineState as? EngineState.Failed)?.let {
                 Text(it.reason, style = MaterialTheme.typography.bodyMedium, color = PixelColors.Bad)
+            }
+            (engineState as? EngineState.Restarting)?.let {
+                Text(
+                    "${it.reason}. Restarting automatically (attempt ${it.attempt} of ${RestartPolicy.MAX_ATTEMPTS}) " +
+                        "in ${it.delaySeconds} s.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = PixelColors.Gold,
+                )
             }
             if (running) {
                 PixelButton(text = "Stop provider", onClick = { ProviderController.stop(context) }, color = PixelColors.PanelLight)
@@ -238,6 +248,14 @@ private fun RegistrationPanel(
         }
         message?.let { Text(it, color = PixelColors.Bad) }
     }
+}
+
+private fun statusLabel(state: EngineState): String = when (state) {
+    EngineState.Running -> "online"
+    EngineState.Starting -> "starting"
+    is EngineState.Restarting -> "reconnecting"
+    EngineState.Registering, EngineState.AwaitingOtp, EngineState.Verifying -> "registering"
+    else -> "offline"
 }
 
 private fun hasNotificationPermission(context: Context): Boolean =
