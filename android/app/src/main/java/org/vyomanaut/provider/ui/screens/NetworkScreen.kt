@@ -19,9 +19,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import org.vyomanaut.provider.network.AddressPicker
 import org.vyomanaut.provider.network.CheckResult
 import org.vyomanaut.provider.network.CoordinatorCheck
 import org.vyomanaut.provider.network.NetworkRules
+import org.vyomanaut.provider.network.NetworkStatus
 import org.vyomanaut.provider.network.NetworkStatusReader
 import org.vyomanaut.provider.network.OnboardingStore
 import org.vyomanaut.provider.ui.pixel.PixelButton
@@ -78,6 +80,8 @@ fun NetworkScreen() {
             }
         }
 
+        AdvertisedAddressPanel(status, store.coordinatorUrl())
+
         PixelPanel(title = "Coordinator") {
             PixelTextField(
                 value = urlText,
@@ -132,6 +136,38 @@ fun NetworkScreen() {
                 is CheckResult.Failed -> Text(r.reason, color = PixelColors.Bad)
                 null -> Unit
             }
+        }
+    }
+}
+
+/**
+ * Which address the network will use to reach this phone. Audits and uploads connect TO the phone, and on the
+ * Android 14 and 16 test phones incoming connections over a VPN were never delivered to the app (they were over
+ * USB tethering), so ZeroTier only works for heartbeats there. A Wi-Fi shared with the coordinator works.
+ */
+@Composable
+private fun AdvertisedAddressPanel(status: NetworkStatus, coordinatorUrl: String) {
+    val host = try {
+        java.net.URI(coordinatorUrl).host
+    } catch (e: java.net.URISyntaxException) {
+        null
+    }
+    val picked = AddressPicker.pick(status.allAddresses, host)
+    PixelPanel(title = "This phone's address") {
+        if (picked == null) {
+            Text("No network address yet. Connect to the coordinator's Wi-Fi or turn on ZeroTier.", color = PixelColors.Bad)
+            return@PixelPanel
+        }
+        Text("Advertised to the network: ${picked.address} " + if (picked.isVpn) "(ZeroTier)" else "(Wi-Fi / local network)")
+        if (picked.isVpn) {
+            Text(
+                "Warning: Android may not deliver incoming connections over a VPN to apps. Audits and file uploads " +
+                    "connect to this phone, so they can fail over ZeroTier even though heartbeats work. For the demo, " +
+                    "put this phone on the same Wi-Fi as the coordinator and enter the coordinator's Wi-Fi address below.",
+                color = PixelColors.Gold,
+            )
+        } else {
+            Text("Same network as the coordinator: audits and uploads can reach this phone.", color = PixelColors.Good)
         }
     }
 }

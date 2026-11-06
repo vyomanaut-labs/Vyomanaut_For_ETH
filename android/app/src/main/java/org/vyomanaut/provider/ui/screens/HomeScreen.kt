@@ -77,7 +77,8 @@ fun HomeScreen() {
     var zeroTierExempt by remember { mutableStateOf(checklist.zeroTierExempt()) }
     var oemDone by remember { mutableStateOf(checklist.oemSettingsDone()) }
     val oemGuide = remember { OemGuides.forManufacturer(Build.MANUFACTURER, Build.BRAND) }
-    val missingSteps = StartReadiness.missingSteps(batteryExempt, zeroTierExempt)
+    val usesZeroTier = EngineConfigs.advertiseAddress(context, OnboardingStore(context).coordinatorUrl())?.isVpn ?: true
+    val missingSteps = StartReadiness.missingSteps(batteryExempt, zeroTierExempt, usesZeroTier)
 
     // The user may change battery or notification settings outside the app; re-read them on return.
     LifecycleResumeEffect(Unit) {

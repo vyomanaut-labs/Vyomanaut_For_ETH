@@ -20,6 +20,13 @@ class StartReadinessTest {
     }
 
     @Test
+    fun zeroTierStepIsNotNeededOnASharedWifi() {
+        assertTrue(
+            StartReadiness.missingSteps(appBatteryExempt = true, zeroTierExemptConfirmed = false, usesZeroTier = false).isEmpty(),
+        )
+    }
+
+    @Test
     fun zeroTierAloneStillBlocksStart() {
         assertEquals(
             listOf(StartReadiness.NEED_ZEROTIER_EXEMPTION),
