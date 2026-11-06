@@ -19,6 +19,32 @@ app still builds, and the Home tab says the provider program is not bundled.
 
 Only `arm64-v8a` phones are supported (no 32-bit phones, no x86 emulators).
 
+## Reaching a phone: the relay
+
+Android never delivers new incoming connections over a VPN such as ZeroTier to an app. It was tested on a POCO M6
+Plus (Android 14) and a Galaxy M34 (Android 16): a listener running as the app timed out, while the same listener
+running as the shell user, or reached over USB tethering, accepted the connection. Heartbeats still work, because
+the phone opens them itself. Audits, vetting chunks and uploads do not, because they must connect *into* the phone.
+
+So phones stay reachable through a relay node, which is ARCH §13 Tier 3 (`internal/p2p/relay.go`):
+
+1. On the coordinator machine, run the relay next to the coordinator:
+
+   ```bash
+   go run ./cmd/relay --listen :30300
+   ```
+
+   On macOS, allow incoming connections for it if the firewall asks.
+2. The app starts the provider with `--relay-addrs=<coordinator host>:30300`. Change it on the Network tab, or set it
+   to `off`. The provider keeps an outgoing reservation on the relay. Its heartbeats advertise
+   `/ip4/<relay>/tcp/30300/p2p-circuit/p2p/<peer id>` first.
+3. The coordinator and clients dial that address with the normal p2p calls. The relay asks the phone to open a second
+   outgoing connection and splices the two. TLS runs end to end, so the relay only sees ciphertext.
+
+Checked end to end on the POCO: the real provider, running as the app, accepted an audit-challenge stream and a
+chunk-upload stream through the relay in about 30 ms. The Windows providers need nothing: without
+`--relay-addrs` the provider behaves as before.
+
 ## Tabs
 
 | Tab | What it does |
@@ -40,6 +66,8 @@ Only `arm64-v8a` phones are supported (no 32-bit phones, no x86 emulators).
 | Wrong VPN address | `network/AddressPicker.kt` advertises the VPN address on the coordinator's subnet. |
 | Logs lost on restart | `engine/LogFile.kt` keeps the last 200 lines in `files/provider-log.txt`. |
 | `com.example` package | Now `org.vyomanaut.provider`. |
+| Provider never started after registering (found in testing) | The provider starts as soon as registration succeeds. Register is disabled until the checklist is done. |
+| Audits and uploads cannot reach the phone over ZeroTier (found in testing) | Relay node (see above); the phone advertises its relay address. |
 
 Still open (outside the app):
 - The coordinator's 10 GB minimum (`internal/api/provider.go`, migration 001) still inflates small phones.
@@ -47,6 +75,7 @@ Still open (outside the app):
 - Registration still uses the operator-read code.
 - The provider's 7-day login token is not renewed.
 - No coordinator API returns per-provider on-chain payouts or the coordinator wallet; the app reads the wallet from the chain instead.
+- Relay reservations are not signed yet. A peer could reserve another phone's Peer ID, but the TLS check means it only blocks that phone; it cannot read or forge traffic.
 
 ## Test on a phone
 
