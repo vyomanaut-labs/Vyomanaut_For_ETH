@@ -191,6 +191,13 @@ func TestAgainstALocalChain(t *testing.T) {
 	}
 	ok(mustSend(coord, &tokenAddr, mint))
 
+	t.Run("the coordinator getter reads the configured address", func(t *testing.T) {
+		got, err := escrowAsCoord.Coordinator(ctx)
+		if err != nil || got != coordKey.Address() {
+			t.Fatalf("coordinator = %v, %v; want %v", got, err, coordKey.Address())
+		}
+	})
+
 	t.Run("deposit", func(t *testing.T) {
 		ok := receiptOK(t)
 		ok(tokenAsOwner.Approve(ctx, escrowAddr, big.NewInt(500*usdt1)))

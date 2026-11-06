@@ -127,6 +127,15 @@ func NewEscrowContract(addr Address, rpc *RPC, s *Sender) *EscrowContract {
 // Address is the contract address.
 func (e *EscrowContract) Address() Address { return e.addr }
 
+// Coordinator returns the only address allowed to post periods.
+func (e *EscrowContract) Coordinator(ctx context.Context) (Address, error) {
+	out, err := callView(ctx, e.rpc, e.addr, "coordinator()")
+	if err != nil {
+		return Address{}, err
+	}
+	return abiReader{out}.address(0)
+}
+
 // Credit is an owner's unspent deposit.
 func (e *EscrowContract) Credit(ctx context.Context, owner Address) (*big.Int, error) {
 	return viewUint(ctx, e.rpc, e.addr, "credit(address)", addrArg(owner))
