@@ -36,6 +36,7 @@ class ProviderService : Service() {
     private val locks by lazy { PowerLocks(this) }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var watchJob: Job? = null
+    private var networkWatcher: NetworkWatcher? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -66,6 +67,11 @@ class ProviderService : Service() {
         }
         // Rebuilt by the engine on every (re)start, so a retryable gap such as ZeroTier still connecting is fine.
         ProviderEngine.startRun(this)
+        if (networkWatcher == null) {
+            networkWatcher = NetworkWatcher(this) { vpnReturned ->
+                ProviderEngine.onNetworkChanged(this, vpnReturned)
+            }.also { it.start() }
+        }
         watchJob?.cancel()
         watchJob = scope.launch {
             ProviderEngine.state.collect { state ->
@@ -79,6 +85,8 @@ class ProviderService : Service() {
 
     override fun onDestroy() {
         scope.cancel()
+        networkWatcher?.stop()
+        networkWatcher = null
         ProviderEngine.shutdown()
         locks.release()
         ProviderRuntime.setRunning(false)

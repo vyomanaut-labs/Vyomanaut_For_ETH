@@ -5,6 +5,7 @@ import android.os.SystemClock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.vyomanaut.provider.network.OnboardingStore
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.Executors
@@ -73,6 +74,7 @@ object ProviderEngine {
     private var keepRunning = false
     private var attempt = 0
     private var runStartedAt = 0L
+    private var runningAdvertiseAddr: String? = null
     private var scheduledRestart: ScheduledFuture<*>? = null
 
     // Per-program output checks (ProviderLogRules).
@@ -131,6 +133,35 @@ object ProviderEngine {
             appendLog("[APP] $reason: restarting now")
         }
         worker.execute { runOnce() }
+    }
+
+    /**
+     * Called by the service's network watcher. Skips the wait of a pending restart, and restarts a running
+     * provider when ZeroTier came back after being lost or its address changed, so the network is told the
+     * address it can actually reach.
+     */
+    fun onNetworkChanged(context: Context, vpnReturned: Boolean) {
+        val ctx = context.applicationContext
+        worker.execute {
+            val state = synchronized(this) { if (keepRunning) mutableState.value else null }
+            when (state) {
+                is EngineState.Restarting -> retryNow("Network changed")
+                EngineState.Running -> {
+                    val current = synchronized(this) { runningAdvertiseAddr }
+                    val now = EngineConfigs.zeroTierAddress(ctx, OnboardingStore(ctx).coordinatorUrl())
+                    val reason = when {
+                        now != null && now != current -> "ZeroTier address changed from $current to $now"
+                        vpnReturned -> "ZeroTier reconnected"
+                        else -> null
+                    }
+                    if (reason != null) {
+                        appendLog("[APP] $reason: restarting the provider")
+                        runOnce()
+                    }
+                }
+                else -> Unit
+            }
+        }
     }
 
     @Synchronized
@@ -197,6 +228,7 @@ object ProviderEngine {
                 if (launch(ctx, result.config, ProviderArgs.run(result.config), isOnboarding = false)) {
                     synchronized(this) {
                         runStartedAt = SystemClock.elapsedRealtime()
+                        runningAdvertiseAddr = result.config.advertiseAddr
                         if (keepRunning) mutableState.value = EngineState.Running
                     }
                 } else {
