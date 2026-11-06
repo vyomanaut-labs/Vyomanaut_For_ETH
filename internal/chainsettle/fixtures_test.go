@@ -66,6 +66,9 @@ func newTestEnv(t *testing.T) *testEnv {
 	if _, err := e.db.Exec(`SELECT 1 FROM chain_periods LIMIT 1`); err != nil {
 		t.Skipf("migration 002 is not applied; skipping: %v", err)
 	}
+	if _, err := e.db.Exec(`SELECT 1 FROM chain_refunds LIMIT 1`); err != nil {
+		t.Skipf("migration 004 is not applied; skipping: %v", err)
+	}
 	e.reset(t)
 	t.Cleanup(func() { e.cleanup(t) })
 	return e
@@ -75,7 +78,7 @@ func (e *testEnv) reset(t *testing.T) {
 	t.Helper()
 	if _, err := e.admin.Exec(`
 TRUNCATE chain_period_items, chain_period_payouts, chain_period_debits, chain_periods,
-         chain_deposits, chain_cursors`); err != nil {
+         chain_deposits, chain_refunds, chain_cursors`); err != nil {
 		t.Fatalf("reset: %v", err)
 	}
 }
@@ -185,6 +188,16 @@ func (e *testEnv) periodStatus(t *testing.T, period uint64) string {
 	return s
 }
 
+// ledgerWithdrawals counts and sums an owner's WITHDRAWAL rows.
+func (e *testEnv) ledgerWithdrawals(t *testing.T, owner uuid.UUID) (n, paise int64) {
+	t.Helper()
+	if err := e.db.QueryRow(`SELECT COUNT(*), COALESCE(SUM(amount_paise),0)::bigint FROM owner_escrow_events
+		WHERE owner_id = $1 AND event_type = 'WITHDRAWAL'`, owner).Scan(&n, &paise); err != nil {
+		t.Fatalf("ledger withdrawals: %v", err)
+	}
+	return n, paise
+}
+
 func (e *testEnv) ledgerDeposits(t *testing.T, owner uuid.UUID) (n, paise int64) {
 	t.Helper()
 	if err := e.db.QueryRow(`SELECT COUNT(*), COALESCE(SUM(amount_paise),0)::bigint FROM owner_escrow_events
@@ -200,6 +213,7 @@ type fakeEscrow struct {
 	mu       sync.Mutex
 	head     uint64
 	events   []chain.DepositEvent
+	refunds  []chain.RefundEvent
 	credit   map[chain.Address]int64
 	periods  map[uint64]*fakePeriod
 	last     uint64
@@ -243,6 +257,18 @@ func (f *fakeEscrow) DepositedEvents(_ context.Context, from, to uint64) ([]chai
 	f.logRanges = append(f.logRanges, [2]uint64{from, to})
 	var out []chain.DepositEvent
 	for _, e := range f.events {
+		if e.BlockNumber >= from && e.BlockNumber <= to {
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeEscrow) RefundedEvents(_ context.Context, from, to uint64) ([]chain.RefundEvent, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []chain.RefundEvent
+	for _, e := range f.refunds {
 		if e.BlockNumber >= from && e.BlockNumber <= to {
 			out = append(out, e)
 		}

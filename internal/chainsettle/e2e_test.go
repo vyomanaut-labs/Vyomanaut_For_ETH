@@ -267,4 +267,22 @@ func TestTheWholeMoneyPathAgainstALocalChain(t *testing.T) {
 	if e.count(t, `SELECT COUNT(*) FROM chain_periods`) != 1 {
 		t.Fatal("a later cycle created another period")
 	}
+
+	// ── the coordinator falls silent; the owner takes the unspent credit back ──
+	c.raw(t, "evm_increaseTime", 900)
+	c.raw(t, "evm_mine")
+	if _, err := escrowAsOwner.Refund(ctx, ownerKey.Address()); err != nil {
+		t.Fatalf("refund: %v", err)
+	}
+	c.raw(t, "evm_mine") // a confirmation for the refund log
+	if left, _ := escrowAsCoord.Credit(ctx, ownerKey.Address()); left.Sign() != 0 {
+		t.Fatalf("credit after refund = %v, want 0", left)
+	}
+	if err := svc.RunOnce(ctx); err != nil {
+		t.Fatalf("refund cycle: %v", err)
+	}
+	// 5,000,000 deposited - 10,000 paid out = 4,990,000 micro refunded = 499,000 paise
+	if n, paise := e.ledgerWithdrawals(t, ownerRow); n != 1 || paise != 499_000 {
+		t.Fatalf("ledger debited %d rows / %d paise for the on-chain refund; want 1 / 499000", n, paise)
+	}
 }

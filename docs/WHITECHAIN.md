@@ -22,7 +22,9 @@ contract on Whitechain Sepolia (chain ID 1874), without changing the ledger.
    provider needs no wallet software, no gas token and no RPC access.
 
 If the coordinator stops posting, anyone can return an owner's unspent credit to
-that owner, and periods already posted stay claimable by anyone.
+that owner, and periods already posted stay claimable by anyone. The coordinator
+reads every `Refunded` log and records it as an owner WITHDRAWAL in the ledger
+(migration 004), so a refunded deposit is never left credited.
 
 ## Why this needs on-chain stablecoin settlement
 
@@ -168,6 +170,9 @@ larger than the wallet's USDT balance fails before any gas is spent.
   providers are actually paid; earnings withheld by a reliability tier stay as
   the owner's escrow credit.
 - Withdrawing unspent credit while the coordinator is active is not supported.
+- The silence timeout counts from the last posted period, or from deployment if
+  none was ever posted. Until the first period is posted, an owner can refund at
+  any time.
 - Audit periods are closed on the release tick, so an announced departure finds
   no open period to prorate and releases nothing at departure; the held balance
   follows the existing departure rules.

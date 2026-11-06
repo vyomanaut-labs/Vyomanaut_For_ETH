@@ -297,6 +297,54 @@ func parseDeposits(logs []Log) ([]DepositEvent, error) {
 	return out, nil
 }
 
+// RefundEvent is one Refunded log: owner's unspent credit was returned to
+// owner after the coordinator fell silent. Caller is whoever sent the refund.
+type RefundEvent struct {
+	Owner       Address
+	Caller      Address
+	Amount      *big.Int
+	BlockNumber uint64
+	TxHash      [hashLen]byte
+	LogIndex    uint64
+}
+
+var refundedTopic = Keccak256([]byte("Refunded(address,uint256,address)"))
+
+// RefundedEvents returns Refunded logs in blocks from..to inclusive.
+func (e *EscrowContract) RefundedEvents(ctx context.Context, from, to uint64) ([]RefundEvent, error) {
+	logs, err := e.rpc.Logs(ctx, e.addr, refundedTopic, from, to)
+	if err != nil {
+		return nil, err
+	}
+	return parseRefunds(logs)
+}
+
+func parseRefunds(logs []Log) ([]RefundEvent, error) {
+	out := make([]RefundEvent, 0, len(logs))
+	for _, l := range logs {
+		const topicsWanted = 3 // signature, the indexed owner and the indexed caller
+		if len(l.Topics) != topicsWanted {
+			return nil, fmt.Errorf("%w: Refunded log has %d topics", ErrABI, len(l.Topics))
+		}
+		owner, err := abiReader{data: l.Topics[1][:]}.address(0)
+		if err != nil {
+			return nil, err
+		}
+		caller, err := abiReader{data: l.Topics[2][:]}.address(0)
+		if err != nil {
+			return nil, err
+		}
+		amount, err := abiReader{data: l.Data}.big(0)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, RefundEvent{
+			Owner: owner, Caller: caller, Amount: amount, BlockNumber: l.BlockNumber, TxHash: l.TxHash, LogIndex: l.LogIndex,
+		})
+	}
+	return out, nil
+}
+
 // ── shared plumbing ──────────────────────────────────────────────────────
 
 func callView(ctx context.Context, rpc *RPC, to Address, sig string, args ...abiArg) ([]byte, error) {

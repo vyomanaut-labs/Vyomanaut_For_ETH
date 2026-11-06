@@ -245,6 +245,33 @@ func TestDepositEventsDecodeOwnerAndAmount(t *testing.T) {
 	}
 }
 
+const refundedTopicHex = "b44b3631755227290f8fbd7b248fa4be405129d15351313e3c332a3fb9919417"
+
+func TestRefundEventsDecodeOwnerCallerAndAmount(t *testing.T) {
+	owner := MustParseAddress("0x70997970C51812dc3A010C7d01b50e0d17dc79C8")
+	caller := MustParseAddress("0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC")
+	var ownerTopic, callerTopic [32]byte
+	copy(ownerTopic[12:], owner[:])
+	copy(callerTopic[12:], caller[:])
+	amount := make([]byte, 32)
+	big.NewInt(1000000).FillBytes(amount)
+	got, err := parseRefunds([]Log{{Topics: [][32]byte{refundedTopic, ownerTopic, callerTopic}, Data: amount, BlockNumber: 11, LogIndex: 4}})
+	if err != nil || len(got) != 1 {
+		t.Fatalf("%v %v", got, err)
+	}
+	if got[0].Owner != owner || got[0].Caller != caller || got[0].Amount.Int64() != 1000000 ||
+		got[0].BlockNumber != 11 || got[0].LogIndex != 4 {
+		t.Fatalf("event = %+v", got[0])
+	}
+	if _, err := parseRefunds([]Log{{Topics: [][32]byte{refundedTopic, ownerTopic}}}); !errors.Is(err, ErrABI) {
+		t.Errorf("a log without a caller topic must be rejected: %v", err)
+	}
+	// keccak256("Refunded(address,uint256,address)"), checked with cast sig-event
+	if got := hex.EncodeToString(refundedTopic[:]); got != refundedTopicHex {
+		t.Errorf("Refunded topic = %s", got)
+	}
+}
+
 func TestFinalizedBlockReportsMissingFinality(t *testing.T) {
 	n := newFakeNode(t) // eth_getBlockByNumber answers "method not found"
 	if _, err := n.rpc().FinalizedBlock(context.Background()); !errors.Is(err, ErrNoFinality) {

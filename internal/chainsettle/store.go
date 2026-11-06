@@ -26,7 +26,9 @@ const (
 
 const (
 	cursorDeposits   = "deposits"
+	cursorRefunds    = "refunds"
 	depositKeyDomain = "vyomanaut/chain-deposit/v1"
+	refundKeyDomain  = "vyomanaut/chain-refund/v1"
 	maxErrorText     = 500
 )
 
@@ -93,9 +95,19 @@ ON CONFLICT (tx_hash, log_index) DO NOTHING`,
 
 // depositIdempotencyKey is the ledger idempotency key of one deposit log.
 func depositIdempotencyKey(txHash []byte, logIndex int64) string {
+	return logIdempotencyKey(depositKeyDomain, txHash, logIndex)
+}
+
+// refundIdempotencyKey is the ledger idempotency key of one refund log. Its
+// domain differs from deposits', so the two can never collide.
+func refundIdempotencyKey(txHash []byte, logIndex int64) string {
+	return logIdempotencyKey(refundKeyDomain, txHash, logIndex)
+}
+
+func logIdempotencyKey(domain string, txHash []byte, logIndex int64) string {
 	var idx [8]byte
 	binary.BigEndian.PutUint64(idx[:], uint64(logIndex))
-	sum := sha256.Sum256(append(append([]byte(depositKeyDomain), txHash...), idx[:]...))
+	sum := sha256.Sum256(append(append([]byte(domain), txHash...), idx[:]...))
 	return fmt.Sprintf("%x", sum)
 }
 
@@ -161,6 +173,96 @@ WHERE tx_hash = $1 AND log_index = $2`, p.txHash, p.logIndex, p.owner, paise); e
 			return nil, fmt.Errorf("chainsettle: mark deposit credited: %w", err)
 		}
 		out = append(out, creditedDeposit{Micro: p.micro, Paise: paise, Owner: p.owner})
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("chainsettle: commit: %w", err)
+	}
+	return out, nil
+}
+
+// ── refunds ──────────────────────────────────────────────────────────────
+
+// recordRefund stores one Refunded log. It reports whether the log was new.
+func (s *store) recordRefund(ctx context.Context, ev chain.RefundEvent) (bool, error) {
+	if !ev.Amount.IsInt64() || ev.Amount.Sign() <= 0 {
+		return false, nil // not representable or empty; the caller logs it
+	}
+	res, err := s.db.ExecContext(ctx, `
+INSERT INTO chain_refunds (tx_hash, log_index, wallet, amount_micro, block_number)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (tx_hash, log_index) DO NOTHING`,
+		ev.TxHash[:], int64(ev.LogIndex), ev.Owner[:], ev.Amount.Int64(), int64(ev.BlockNumber))
+	if err != nil {
+		return false, fmt.Errorf("chainsettle: record refund: %w", err)
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+type appliedRefund struct {
+	Micro, Paise int64
+	Owner        uuid.UUID
+}
+
+// applyPendingRefunds writes one owner WITHDRAWAL for every recorded refund
+// whose wallet is now bound. Each refund is applied in one transaction
+// together with marking it done, so it can never be applied twice. The amount
+// is rounded down to whole paise, the same way deposits are credited, so a
+// deposit refunded in full cancels exactly.
+func (s *store) applyPendingRefunds(ctx context.Context, microPerPaise int64) ([]appliedRefund, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("chainsettle: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	rows, err := tx.QueryContext(ctx, `
+SELECT r.tx_hash, r.log_index, r.amount_micro, w.owner_id
+FROM chain_refunds r
+JOIN owner_wallets w ON w.wallet = r.wallet
+WHERE r.applied_at IS NULL
+ORDER BY r.block_number, r.tx_hash, r.log_index
+FOR UPDATE OF r SKIP LOCKED`)
+	if err != nil {
+		return nil, fmt.Errorf("chainsettle: select refunds: %w", err)
+	}
+	type pending struct {
+		txHash   []byte
+		logIndex int64
+		micro    int64
+		owner    uuid.UUID
+	}
+	var todo []pending
+	for rows.Next() {
+		var p pending
+		if err := rows.Scan(&p.txHash, &p.logIndex, &p.micro, &p.owner); err != nil {
+			_ = rows.Close()
+			return nil, fmt.Errorf("chainsettle: scan refund: %w", err)
+		}
+		todo = append(todo, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	_ = rows.Close()
+
+	out := make([]appliedRefund, 0, len(todo))
+	for _, p := range todo {
+		paise := p.micro / microPerPaise // any remainder is dust below one paisa
+		if paise > 0 {
+			if _, err := tx.ExecContext(ctx, `
+INSERT INTO owner_escrow_events (owner_id, event_type, amount_paise, idempotency_key)
+VALUES ($1, 'WITHDRAWAL', $2, $3)
+ON CONFLICT (idempotency_key) DO NOTHING`, p.owner, paise, refundIdempotencyKey(p.txHash, p.logIndex)); err != nil {
+				return nil, fmt.Errorf("chainsettle: debit ledger: %w", err)
+			}
+		}
+		if _, err := tx.ExecContext(ctx, `
+UPDATE chain_refunds SET owner_id = $3, amount_paise = $4, applied_at = NOW()
+WHERE tx_hash = $1 AND log_index = $2`, p.txHash, p.logIndex, p.owner, paise); err != nil {
+			return nil, fmt.Errorf("chainsettle: mark refund applied: %w", err)
+		}
+		out = append(out, appliedRefund{Micro: p.micro, Paise: paise, Owner: p.owner})
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("chainsettle: commit: %w", err)

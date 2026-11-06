@@ -16,6 +16,7 @@ import (
 // *chain.EscrowContract implements it.
 type Escrow interface {
 	DepositedEvents(ctx context.Context, from, to uint64) ([]chain.DepositEvent, error)
+	RefundedEvents(ctx context.Context, from, to uint64) ([]chain.RefundEvent, error)
 	Credit(ctx context.Context, owner chain.Address) (*big.Int, error)
 	LastPeriod(ctx context.Context) (uint64, error)
 	PeriodInfo(ctx context.Context, period uint64) (chain.PeriodInfo, error)
@@ -96,8 +97,8 @@ func New(db *sql.DB, escrow Escrow, head Head, cfg Config, opts ...Option) (*Ser
 	return s, nil
 }
 
-// RunOnce performs one full cycle: scan deposits, credit them, then advance
-// payouts. Steps are independent: a failure in one does not skip the others,
+// RunOnce performs one full cycle: scan deposits and refunds, apply them to
+// the ledger, then advance payouts. Steps are independent: a failure in one does not skip the others,
 // and every error is returned together.
 func (s *Service) RunOnce(ctx context.Context) error {
 	var errs []error
@@ -109,6 +110,8 @@ func (s *Service) RunOnce(ctx context.Context) error {
 	}
 	step("scan-deposits", s.scanDeposits)
 	step("credit-deposits", s.creditDeposits)
+	step("scan-refunds", s.scanRefunds)
+	step("apply-refunds", s.applyRefunds)
 	step("settle", s.settle)
 	return errors.Join(errs...)
 }
