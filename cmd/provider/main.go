@@ -178,7 +178,7 @@ func parseProviderFlags(args []string) providerFlags {
 	fs.StringVar(&f.microserviceURL, "microservice-url", "", "Required. HTTPS base URL of the coordination microservice.")
 	fs.StringVar(&f.dataDir, "data-dir", defaultDataDir, "Persistent data directory.")
 	fs.IntVar(&f.declaredStorageGB, "declared-storage-gb", 0, "Required in normal mode.")
-	fs.StringVar(&f.relayAddrs, "relay-addrs", "", "Comma-separated relay node multiaddrs.")
+	fs.StringVar(&f.relayAddrs, "relay-addrs", "", "Comma-separated relay nodes (host:port or /ip4/<ip>/tcp/<port>) to stay reachable through when incoming connections cannot reach this machine, e.g. an Android phone (ARCH §13 Tier 3).")
 	fs.IntVar(&f.listenPort, "listen-port", defaultProviderListenPort, "Inbound libp2p listen port for normal (non-simulation) mode. Lets two providers share one host (M17-E F-D-3).")
 	fs.StringVar(&f.advertiseAddr, "advertise-addr", "", "IPv4 host (or host:port — the port is ignored; --listen-port is authoritative) this daemon advertises to the network in its multiaddr. Empty = autodetect the first non-loopback, non-link-local interface address, falling back to 127.0.0.1 with a logged warning if none is found (M17-E F-D-4). A demo across separate desktops REQUIRES this to resolve to a real, reachable address.")
 	fs.IntVar(&f.simCount, "sim-count", 0, "Simulation instances in a single process. 0 = normal mode.")
@@ -273,6 +273,11 @@ type providerInstanceConfig struct {
 	// by resolveAdvertiseHost (advertise.go) — never re-resolved anywhere
 	// else, so the registration and heartbeat multiaddrs always agree.
 	advertiseAddr string
+
+	// relayAddrs are the relay nodes ("host:port") this instance keeps a
+	// reservation on and advertises first (relay.go, ARCH §13 Tier 3). Empty
+	// means directly reachable only, the behaviour before relays existed.
+	relayAddrs []string
 
 	// syntheticASN is non-empty only under --sim-count: SIM-AS{1..sim-asn-count},
 	// cycling if sim-count > sim-asn-count. Sent as demo_asn in the
@@ -369,6 +374,11 @@ func runCmd(args []string) {
 		registrationBearerToken: flags.registrationBearerToken,
 		jwksFetchMaxAttempts:    flags.jwksFetchMaxAttempts,
 	}
+	relays, err := parseRelayAddrs(flags.relayAddrs)
+	if err != nil {
+		log.Fatalf("[STARTUP] FATAL: --relay-addrs: %v", err)
+	}
+	cfg.relayAddrs = relays
 	if err := runProviderInstance(ctx, profile, cfg); err != nil {
 		log.Fatalf("[STARTUP] FATAL: %v", err)
 	}
@@ -929,13 +939,32 @@ fetchLoop:
 		log.Printf("[STARTUP]%s WARNING: parse local multiaddr: %v", logTag, addrErr)
 	}
 
+	// Relay reservations (relay.go, ARCH §13 Tier 3): keep one on each relay
+	// and advertise those addresses FIRST, so dialers try the path that works
+	// for a provider unreachable from outside before waiting out a direct dial.
+	var relayMultiaddrs []p2p.Multiaddr
+	for _, relay := range cfg.relayAddrs {
+		relayAddr, relayErr := p2p.RelayMultiaddr(relay, peerID)
+		if relayErr != nil {
+			log.Printf("[STARTUP]%s WARNING: relay %s: %v", logTag, relay, relayErr)
+			continue
+		}
+		relayMultiaddrs = append(relayMultiaddrs, relayAddr)
+		go func(relay string) { _ = p2p.ServeViaRelay(ctx, host, relay, log.Printf) }(relay)
+		log.Printf("[STARTUP]%s advertising %s (through relay %s)", logTag, relayAddr, relay)
+	}
+
 	heartbeatCfg := p2p.HeartbeatConfig{
 		Profile: profile,
 		CurrentAddrs: func() []p2p.Multiaddr {
-			if localMultiaddr == nil {
+			addrs := append([]p2p.Multiaddr{}, relayMultiaddrs...)
+			if localMultiaddr != nil {
+				addrs = append(addrs, localMultiaddr)
+			}
+			if len(addrs) == 0 {
 				return nil
 			}
-			return []p2p.Multiaddr{localMultiaddr}
+			return addrs
 		},
 		DHT:   dht,
 		Store: nil, // GAP: ChunkDHTKeySource adapter over storage.ChunkStore not yet built (see heartbeat.go's own file comment)
