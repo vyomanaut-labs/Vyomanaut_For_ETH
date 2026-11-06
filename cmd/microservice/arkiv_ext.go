@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"math/big"
 	"os"
 	"time"
@@ -29,8 +30,11 @@ const (
 	arkivMaxRSShards  = 255
 )
 
-// weiPerGLM is 1e18: tGLM has 18 decimals.
-var weiPerGLM = new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
+// glmDecimals: tGLM, like ETH, has 18 decimals.
+const glmDecimals = 18
+
+// weiPerGLM is 10^glmDecimals.
+var weiPerGLM = new(big.Float).SetFloat64(math.Pow10(glmDecimals))
 
 func init() {
 	registerExtension(extension{name: "arkiv", start: startArkiv})

@@ -88,7 +88,7 @@ func NewU64(name string, value uint64, indexed bool) (Attribute, error) {
 	if indexed {
 		t |= indexedBit
 	}
-	return Attribute{Name: n, TypeID: t, Value: common.LeftPadBytes(new(big.Int).SetUint64(value).Bytes(), 32)}, nil
+	return Attribute{Name: n, TypeID: t, Value: common.LeftPadBytes(new(big.Int).SetUint64(value).Bytes(), abiWordSize)}, nil
 }
 
 // NewBytes builds a bytes attribute. Bytes attributes cannot be indexed.

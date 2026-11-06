@@ -21,6 +21,12 @@ var executeSelector = [4]byte{0x49, 0x65, 0x00, 0x44}
 const (
 	executeSignature = "execute((uint8,bytes)[])"
 	opCreate         = uint8(1)
+
+	// ABI and key-derivation sizes.
+	abiWordSize    = 32  // one ABI word
+	saltBits       = 128 // uint128 salt
+	saltBytes      = saltBits / 8
+	predictKeySize = abiWordSize + common.AddressLength + common.AddressLength + 8 + saltBytes
 )
 
 // The structs below are only ever handed to the ABI packer, which matches
@@ -68,7 +74,7 @@ func mustABIType(t string, comps []abi.ArgumentMarshaling) abi.Type {
 // NewSalt returns a random 128-bit salt. A random salt keeps the entity key
 // unpredictable to anyone but the creator.
 func NewSalt() (*big.Int, error) {
-	return rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	return rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), saltBits))
 }
 
 // EncodeCreate returns the operationData for a create operation:
@@ -82,7 +88,7 @@ func EncodeCreate(attrs []Attribute, salt *big.Int, minLifetimeBlocks uint64, fl
 	if err != nil {
 		return nil, err
 	}
-	if salt == nil || salt.Sign() < 0 || salt.BitLen() > 128 {
+	if salt == nil || salt.Sign() < 0 || salt.BitLen() > saltBits {
 		return nil, errors.New("arkiv: salt must be an unsigned 128-bit integer")
 	}
 	conv := make([]abiAttribute, len(sorted))
@@ -94,7 +100,7 @@ func EncodeCreate(attrs []Attribute, salt *big.Int, minLifetimeBlocks uint64, fl
 	if err != nil {
 		return nil, fmt.Errorf("arkiv: pack create data: %w", err)
 	}
-	return append(common.LeftPadBytes([]byte{0x20}, 32), packed...), nil
+	return append(common.LeftPadBytes([]byte{abiWordSize}, abiWordSize), packed...), nil
 }
 
 // BuildExecuteCalldata wraps one create operationData as execute([(1, data)]) calldata.
@@ -113,11 +119,11 @@ func BuildExecuteCalldata(createData []byte) ([]byte, error) {
 func PredictKey(chainID *big.Int, owner common.Address, nonce uint64, salt *big.Int) common.Hash {
 	var n [8]byte
 	binary.BigEndian.PutUint64(n[:], nonce)
-	buf := make([]byte, 0, 96)
-	buf = append(buf, common.LeftPadBytes(chainID.Bytes(), 32)...)
+	buf := make([]byte, 0, predictKeySize)
+	buf = append(buf, common.LeftPadBytes(chainID.Bytes(), abiWordSize)...)
 	buf = append(buf, Address.Bytes()...)
 	buf = append(buf, owner.Bytes()...)
 	buf = append(buf, n[:]...)
-	buf = append(buf, common.LeftPadBytes(salt.Bytes(), 16)...)
+	buf = append(buf, common.LeftPadBytes(salt.Bytes(), saltBytes)...)
 	return keccak(buf)
 }

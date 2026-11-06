@@ -28,7 +28,10 @@ const (
 	MaxLifetimeBlocks uint64 = 7_884_000
 
 	defaultReceiptTimeout = 2 * time.Minute
-	defaultPollInterval   = time.Second
+	// baseFeeHeadroom: the fee cap is this many times the current base fee
+	// plus the tip, so a create survives base-fee rises while it waits.
+	baseFeeHeadroom     = 2
+	defaultPollInterval = time.Second
 )
 
 var (
@@ -248,7 +251,7 @@ func (c *Client) send(ctx context.Context, chainID *big.Int, calldata []byte, ga
 		if err != nil {
 			return common.Hash{}, fmt.Errorf("arkiv: gas tip: %w", err)
 		}
-		feeCap := new(big.Int).Add(new(big.Int).Mul(head.BaseFee, big.NewInt(2)), tip)
+		feeCap := new(big.Int).Add(new(big.Int).Mul(head.BaseFee, big.NewInt(baseFeeHeadroom)), tip)
 		tx = types.NewTx(&types.DynamicFeeTx{
 			ChainID: chainID, Nonce: nonce, GasTipCap: tip, GasFeeCap: feeCap,
 			Gas: gas, To: &to, Value: big.NewInt(0), Data: calldata,

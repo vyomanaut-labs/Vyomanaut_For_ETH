@@ -112,8 +112,9 @@ func BatchReference(provider [16]byte, periodStart time.Time, seq uint32) string
 
 // ParseBatchReference is the inverse of BatchReference.
 func ParseBatchReference(ref string) (provider [16]byte, periodStart time.Time, seq uint32, err error) {
+	const referenceParts = 3 // provider, period start, seq
 	parts := strings.Split(ref, ":")
-	if len(parts) != 3 {
+	if len(parts) != referenceParts {
 		return provider, periodStart, 0, fmt.Errorf("arkiv: bad batch reference %q", ref)
 	}
 	if provider, err = receiptleaf.ParseUUID(parts[0]); err != nil {

@@ -54,6 +54,10 @@ const (
 	AttrDeleted     = "deleted_seen_at"
 )
 
+// shardLeafSize is the shard leaf input: prefix, segment index, shard index,
+// chunk id.
+const shardLeafSize = 1 + 4 + 2 + 32
+
 // Shard is one RS shard of a file.
 type Shard struct {
 	SegmentIndex uint32
@@ -96,7 +100,7 @@ func ShardRoot(shards []Shard) [32]byte {
 	})
 	leaves := make([][32]byte, len(s))
 	for i, sh := range s {
-		buf := make([]byte, 0, 1+4+2+32)
+		buf := make([]byte, 0, shardLeafSize)
 		buf = append(buf, receiptleaf.LeafPrefix)
 		buf = binary.BigEndian.AppendUint32(buf, sh.SegmentIndex)
 		buf = binary.BigEndian.AppendUint16(buf, sh.ShardIndex)

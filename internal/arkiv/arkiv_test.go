@@ -154,10 +154,17 @@ func TestEncodeCreateLayoutAndSorting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unpack: %v", err)
 	}
-	if vals[0].(*big.Int).Cmp(salt) != 0 {
+	gotSalt, ok0 := vals[0].(*big.Int)
+	expires, ok1 := vals[1].(uint64)
+	lifetime, ok2 := vals[2].(uint64)
+	flags, ok3 := vals[3].(uint8)
+	if !ok0 || !ok1 || !ok2 || !ok3 {
+		t.Fatalf("unexpected field types: %T %T %T %T", vals[0], vals[1], vals[2], vals[3])
+	}
+	if gotSalt.Cmp(salt) != 0 {
 		t.Fatalf("salt = %v", vals[0])
 	}
-	if vals[1].(uint64) != 0 || vals[2].(uint64) != 1296000 || vals[3].(uint8) != 0 {
+	if expires != 0 || lifetime != 1296000 || flags != 0 {
 		t.Fatalf("expiresAt/minLifetime/flags = %v/%v/%v", vals[1], vals[2], vals[3])
 	}
 	rv := reflect.ValueOf(vals[4])
@@ -166,17 +173,24 @@ func TestEncodeCreateLayoutAndSorting(t *testing.T) {
 	}
 	var names []string
 	for i := 0; i < rv.Len(); i++ {
-		n := rv.Index(i).FieldByName("Name").Interface().([32]byte)
+		n, ok := rv.Index(i).FieldByName("Name").Interface().([32]byte)
+		if !ok {
+			t.Fatalf("attribute %d name is not [32]byte", i)
+		}
 		names = append(names, strings.TrimRight(string(n[:]), "\x00"))
 	}
 	if strings.Join(names, ",") != "app,body,kind,seq" {
 		t.Fatalf("attributes must be sorted ascending by name, got %v", names)
 	}
-	body := rv.Index(1)
-	if body.FieldByName("TypeId").Interface().(uint8) != TypeBytes {
+	bodyType, ok1 := rv.Index(1).FieldByName("TypeId").Interface().(uint8)
+	appType, ok2 := rv.Index(0).FieldByName("TypeId").Interface().(uint8)
+	if !ok1 || !ok2 {
+		t.Fatal("TypeId is not uint8")
+	}
+	if bodyType != TypeBytes {
 		t.Fatal("body must be typeId 7 (bytes, not indexed)")
 	}
-	if rv.Index(0).FieldByName("TypeId").Interface().(uint8) != TypeStr|indexedBit {
+	if appType != TypeStr|indexedBit {
 		t.Fatal("app must be typeId 0x88 (indexed str)")
 	}
 }
@@ -345,7 +359,10 @@ func TestQueryDecodesRows(t *testing.T) {
 	if fq.method != "arkiv_query" {
 		t.Fatalf("method = %s", fq.method)
 	}
-	opts := fq.args[1].(map[string]any)
+	opts, ok := fq.args[1].(map[string]any)
+	if !ok {
+		t.Fatalf("options are %T", fq.args[1])
+	}
 	if opts["limit"] != "0xa" {
 		t.Fatalf("limit = %v, want 0xa", opts["limit"])
 	}

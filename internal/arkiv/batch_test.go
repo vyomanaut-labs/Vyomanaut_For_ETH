@@ -162,20 +162,37 @@ func TestAuditBatchRoundTripAndTamper(t *testing.T) {
 	if err := json.Unmarshal(body, &raw); err != nil {
 		t.Fatal(err)
 	}
-	raw["receipts"].([]any)[1].(map[string]any)["audit_result"] = "PASS"
+	setResult(t, raw, 1, "PASS")
 	tampered, _ := json.Marshal(raw)
 	if _, _, err := DecodeAuditBatch(tampered); !errors.Is(err, ErrBadBatch) {
 		t.Fatalf("tampered receipt: got %v, want ErrBadBatch", err)
 	}
 
 	// Re-sign with another key but keep the old signature: rejected.
-	raw["receipts"].([]any)[1].(map[string]any)["audit_result"] = "FAIL"
-	other := newKey(t).Public().(ed25519.PublicKey)
+	setResult(t, raw, 1, "FAIL")
+	other, ok := newKey(t).Public().(ed25519.PublicKey)
+	if !ok {
+		t.Fatal("not an Ed25519 key")
+	}
 	raw["coord_key"] = hexs(other)
 	swapped, _ := json.Marshal(raw)
 	if _, _, err := DecodeAuditBatch(swapped); !errors.Is(err, ErrBadBatch) {
 		t.Fatalf("swapped key: got %v, want ErrBadBatch", err)
 	}
+}
+
+// setResult changes the audit_result of receipt i in a decoded batch body.
+func setResult(t *testing.T, raw map[string]any, i int, result string) {
+	t.Helper()
+	list, ok := raw["receipts"].([]any)
+	if !ok || i >= len(list) {
+		t.Fatal("body has no receipts list")
+	}
+	rec, ok := list[i].(map[string]any)
+	if !ok {
+		t.Fatal("receipt is not an object")
+	}
+	rec["audit_result"] = result
 }
 
 func hexs(b []byte) string {

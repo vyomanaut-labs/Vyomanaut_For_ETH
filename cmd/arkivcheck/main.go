@@ -46,6 +46,7 @@ const (
 	defaultLimit  = 20
 	maxQueryLimit = 100
 	oneArgument   = 2
+	entityKeyLen  = 2 + 64 // "0x" and 64 hex digits
 
 	defaultRPCURL = "https://rpc.rabdi.db-chain.testnet.arkiv.network"
 	explorerBase  = "https://rabdi.explorer.arkiv.network"
@@ -315,7 +316,7 @@ func (c *checker) checkFileEntity(ctx context.Context, db *sql.DB, kind string, 
 
 // entity fetches and verifies one entity.
 func (c *checker) entity(ctx context.Context, key string) int {
-	if !strings.HasPrefix(key, "0x") || len(key) != 66 {
+	if !strings.HasPrefix(key, "0x") || len(key) != entityKeyLen {
 		fprintln(c.errOut, "arkivcheck: an entity key is 0x followed by 64 hex digits")
 		return exitUsage
 	}
