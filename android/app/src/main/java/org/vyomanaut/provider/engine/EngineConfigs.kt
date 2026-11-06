@@ -10,6 +10,9 @@ import java.io.File
 object EngineConfigs {
     private const val DATA_SUBDIR = "provider"
 
+    /** The provider's data directory: identity, registration.json and stored shards. */
+    fun dataDir(context: Context): File = File(context.filesDir, DATA_SUBDIR)
+
     fun fromDevice(context: Context, requireRegistered: Boolean): ConfigResult {
         val onboarding = OnboardingStore(context)
         val url = onboarding.coordinatorUrl()
@@ -21,7 +24,7 @@ object EngineConfigs {
             phone = onboarding.phone(),
             limitBytes = LimitStore(context).limitBytes(),
             vpnAddresses = NetworkStatusReader.read(context).vpnAddresses,
-            dataDir = File(context.filesDir, DATA_SUBDIR).absolutePath,
+            dataDir = dataDir(context).absolutePath,
         )
     }
 }

@@ -68,9 +68,8 @@ fun HomeScreen() {
     val logLines by ProviderEngine.log.collectAsState()
 
     val binaryAvailable = remember { ProviderEngine.isBinaryAvailable(context) }
-    val registered = remember(engineState) {
-        EngineStore(context).isRegisteredFor(OnboardingStore(context).coordinatorUrl())
-    }
+    // Read on every recomposition (a cheap preference lookup): a reset can clear it without changing the state.
+    val registered = EngineStore(context).isRegisteredFor(OnboardingStore(context).coordinatorUrl())
 
     var notificationsGranted by remember { mutableStateOf(hasNotificationPermission(context)) }
     var batteryExempt by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
@@ -110,6 +109,9 @@ fun HomeScreen() {
         // The title follows what the provider is actually doing, not whether the service was started.
         PixelPanel(title = "Status: " + statusLabel(engineState)) {
             (engineState as? EngineState.Failed)?.let {
+                Text(it.reason, style = MaterialTheme.typography.bodyMedium, color = PixelColors.Bad)
+            }
+            (engineState as? EngineState.NeedsRegistration)?.let {
                 Text(it.reason, style = MaterialTheme.typography.bodyMedium, color = PixelColors.Bad)
             }
             (engineState as? EngineState.Restarting)?.let {
@@ -199,6 +201,7 @@ private fun RegistrationPanel(
     val context = LocalContext.current
     var otp by remember { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
+    var confirmReset by remember { mutableStateOf(false) }
 
     PixelPanel(title = "Registration") {
         val limitBytes = LimitStore(context).limitBytes()
@@ -233,7 +236,31 @@ private fun RegistrationPanel(
 
             engineState is EngineState.Verifying -> Text("Verifying the code...")
 
-            registered -> Text("This phone is registered with the coordinator.", color = PixelColors.Good)
+            engineState is EngineState.NeedsRegistration -> {
+                Text(
+                    "Registering again deletes this phone's provider identity and stored shards, then runs " +
+                        "onboarding with a new 6-digit code.",
+                )
+                PixelButton(text = "Register again", onClick = { ProviderEngine.resetRegistration(context) })
+            }
+
+            registered -> {
+                Text("This phone is registered with the coordinator.", color = PixelColors.Good)
+                // Two taps, because this wipes the provider identity and every stored shard.
+                PixelButton(
+                    text = if (confirmReset) "Tap again to delete and reset" else "Reset registration",
+                    color = if (confirmReset) PixelColors.Bad else PixelColors.PanelLight,
+                    onClick = {
+                        if (confirmReset) {
+                            confirmReset = false
+                            ProviderController.stop(context)
+                            ProviderEngine.resetRegistration(context)
+                        } else {
+                            confirmReset = true
+                        }
+                    },
+                )
+            }
 
             else -> {
                 Text("Register once so the coordinator admits this phone. Make sure the Network and Storage tabs are set up first.")
@@ -254,6 +281,7 @@ private fun statusLabel(state: EngineState): String = when (state) {
     EngineState.Running -> "online"
     EngineState.Starting -> "starting"
     is EngineState.Restarting -> "reconnecting"
+    is EngineState.NeedsRegistration -> "register again"
     EngineState.Registering, EngineState.AwaitingOtp, EngineState.Verifying -> "registering"
     else -> "offline"
 }

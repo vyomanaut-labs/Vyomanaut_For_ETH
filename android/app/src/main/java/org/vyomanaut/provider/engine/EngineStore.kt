@@ -13,6 +13,11 @@ class EngineStore(context: Context) {
         prefs.edit().putString(KEY_REGISTERED_COORDINATOR, coordinatorUrl).apply()
     }
 
+    /** Forgets the registration, so Start is blocked until the phone registers again. */
+    fun clearRegistration() {
+        prefs.edit().remove(KEY_REGISTERED_COORDINATOR).apply()
+    }
+
     private companion object {
         const val PREFS_NAME = "provider_settings"
         const val KEY_REGISTERED_COORDINATOR = "registered_coordinator"

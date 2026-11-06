@@ -71,7 +71,7 @@ class ProviderService : Service() {
             ProviderEngine.state.collect { state ->
                 getSystemService(NotificationManager::class.java)
                     .notify(NOTIFICATION_ID, buildNotification(textFor(state)))
-                if (state is EngineState.Failed) stopSelf()
+                if (state is EngineState.Failed || state is EngineState.NeedsRegistration) stopSelf()
             }
         }
         return START_STICKY
@@ -90,6 +90,7 @@ class ProviderService : Service() {
         EngineState.Starting -> "Starting the provider..."
         is EngineState.Restarting -> "Reconnecting: restart ${state.attempt} in ${state.delaySeconds} s"
         is EngineState.Failed -> "Stopped: ${state.reason}"
+        is EngineState.NeedsRegistration -> "Stopped: register this phone again"
         else -> "Stopping..."
     }
 

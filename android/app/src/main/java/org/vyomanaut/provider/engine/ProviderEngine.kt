@@ -22,6 +22,9 @@ sealed interface EngineState {
 
     /** The provider exited on its own; the app restarts it after [delaySeconds]. */
     data class Restarting(val attempt: Int, val delaySeconds: Long, val reason: String) : EngineState
+
+    /** The coordinator rejected the saved registration; the phone must register again. */
+    data class NeedsRegistration(val reason: String) : EngineState
     data class Failed(val reason: String) : EngineState
 }
 
@@ -71,6 +74,11 @@ object ProviderEngine {
     private var attempt = 0
     private var runStartedAt = 0L
     private var scheduledRestart: ScheduledFuture<*>? = null
+
+    // Per-program output checks (ProviderLogRules).
+    private var currentIsOnboarding = false
+    private val rejectionsSeen = mutableMapOf<Rejection, Int>()
+    private var phoneTaken = false
 
     // Android only lets an app run executables from its native library folder.
     fun binaryFile(context: Context): File = File(context.applicationInfo.nativeLibraryDir, BINARY_NAME)
@@ -142,6 +150,40 @@ object ProviderEngine {
                 if (mutableState.value !is EngineState.Failed) mutableState.value = EngineState.Idle
             }
         }
+    }
+
+    /**
+     * Stops the provider, deletes its data directory (identity, registration and shards) and forgets the
+     * registration, so the phone can onboard again from scratch.
+     */
+    fun resetRegistration(context: Context) {
+        val ctx = context.applicationContext
+        synchronized(this) {
+            keepRunning = false
+            cancelScheduledRestart()
+        }
+        worker.execute {
+            stopCurrent()
+            EngineConfigs.dataDir(ctx).deleteRecursively()
+            EngineStore(ctx).clearRegistration()
+            synchronized(this) {
+                mutableLog.value = emptyList()
+                appendLog("[APP] Registration reset. Register this phone again.")
+                mutableState.value = EngineState.Idle
+            }
+        }
+    }
+
+    /** The coordinator will not take this registration back; stop retrying and send the user to onboarding. */
+    @Synchronized
+    private fun onRejected(rejection: Rejection) {
+        if (!keepRunning) return
+        keepRunning = false
+        cancelScheduledRestart()
+        appendLog("[APP] ${rejection.message}")
+        mutableState.value = EngineState.NeedsRegistration(rejection.message)
+        appContext?.let { EngineStore(it).clearRegistration() }
+        worker.execute { stopCurrent() }
     }
 
     /** Worker thread: builds a fresh configuration (the ZeroTier address may have changed) and launches. */
@@ -223,6 +265,9 @@ object ProviderEngine {
             val myGeneration = generation
             pending.setLength(0)
             stopRequested = false
+            currentIsOnboarding = isOnboarding
+            rejectionsSeen.clear()
+            phoneTaken = false
             try {
                 child.start(
                     args,
@@ -250,9 +295,22 @@ object ProviderEngine {
         if (complete.isNotEmpty()) {
             mutableLog.value = (mutableLog.value + complete).takeLast(MAX_LOG_LINES)
         }
+        for (line in complete) checkLine(line)
         if (mutableState.value == EngineState.Registering && pending.contains(OTP_PROMPT)) {
             mutableState.value = EngineState.AwaitingOtp
         }
+    }
+
+    @Synchronized
+    private fun checkLine(line: String) {
+        if (currentIsOnboarding) {
+            if (ProviderLogRules.isPhoneTaken(line)) phoneTaken = true
+            return
+        }
+        val rejection = ProviderLogRules.rejectionIn(line) ?: return
+        val seen = (rejectionsSeen[rejection] ?: 0) + 1
+        rejectionsSeen[rejection] = seen
+        if (ProviderLogRules.shouldAct(rejection, seen)) onRejected(rejection)
     }
 
     @Synchronized
@@ -265,6 +323,7 @@ object ProviderEngine {
                 store.markRegistered(config.coordinatorUrl)
                 mutableState.value = EngineState.Idle
             }
+            isOnboarding && phoneTaken -> mutableState.value = EngineState.Failed(ProviderLogRules.PHONE_TAKEN_MESSAGE)
             isOnboarding -> mutableState.value =
                 EngineState.Failed("Registration failed (exit code $code). See the details below.")
             keepRunning -> scheduleRestart(
