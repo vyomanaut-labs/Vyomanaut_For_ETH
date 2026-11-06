@@ -332,7 +332,7 @@ object ProviderEngine {
         }
         File(config.dataDir).mkdirs()
         val store = EngineStore(context)
-        val child = ProviderProcess(binary, context.filesDir, context.cacheDir)
+        val child = ProviderProcess(binary, context.filesDir, context.cacheDir, dnsServersOf(context))
         synchronized(this) {
             val myGeneration = generation
             pending.setLength(0)
@@ -417,5 +417,13 @@ object ProviderEngine {
             else -> mutableState.value =
                 EngineState.Failed("Provider stopped unexpectedly (exit code $code). See the details below.")
         }
+    }
+
+    /** The active network's DNS servers, so the Go program can look up names like a Cloudflare tunnel. */
+    private fun dnsServersOf(context: Context): List<String> = try {
+        val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
+        cm?.getLinkProperties(cm.activeNetwork)?.dnsServers?.mapNotNull { it.hostAddress?.substringBefore('%') }.orEmpty()
+    } catch (e: SecurityException) {
+        emptyList()
     }
 }

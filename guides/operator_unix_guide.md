@@ -1,5 +1,7 @@
 # Operator & Data Owner Guide — macOS
 
+> **Demo day:** the one-command flow (QR join, no ZeroTier) is in [host_demo_day.md](host_demo_day.md). This guide still works and explains each piece.
+
 Two roles live in this guide. They can be one Mac or two.
 
 - **Operator** — runs the network and watches the live console. Sees everything about the

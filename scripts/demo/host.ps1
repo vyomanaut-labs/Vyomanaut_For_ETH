@@ -18,6 +18,8 @@
 #   -Local      no tunnels: only devices on this Wi-Fi can join (or a phone over
 #               USB with `adb reverse`). Use it when the venue blocks tunnels.
 #   -ChainApi   also give the chain API (port 8090) a public address.
+#   -Relay H:P  use this relay address instead of a bore.pub tunnel (Windows
+#               Defender may block bore.exe as "potentially unwanted software").
 #   -Stop       stop everything this script and up.ps1 started.
 #
 # Needs: PowerShell 7, Go, Docker Desktop (running). cloudflared and bore are
@@ -32,6 +34,7 @@ param(
     [switch]$Local,
     [switch]$ChainApi,
     [switch]$Stop,
+    [string]$Relay = "",
     [int]$Port = 8080,
     [int]$RelayPort = 30300
 )
@@ -178,11 +181,19 @@ if ($Local) {
     $PublicRelay = "${LanIp}:$RelayPort"
 } else {
     $Cloudflared = Get-Tool "cloudflared" "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
-    $Bore = Get-Tool "bore" "https://github.com/ekzhang/bore/releases/download/v0.6.0/bore-v0.6.0-x86_64-pc-windows-msvc.zip" -Zip
-
-    Say "Opening a public address for the relay (bore.pub)"
-    $boreLog = Start-Hidden $Bore @("local", "$RelayPort", "--to", "bore.pub") "bore.log"
-    $PublicRelay = Wait-ForMatch @($boreLog, "$boreLog.err") "bore\.pub:\d+" "The bore tunnel"
+    if ($Relay) {
+        $PublicRelay = $Relay
+    } else {
+        Say "Opening a public address for the relay (bore.pub)"
+        try {
+            $Bore = Get-Tool "bore" "https://github.com/ekzhang/bore/releases/download/v0.6.0/bore-v0.6.0-x86_64-pc-windows-msvc.zip" -Zip
+            $boreLog = Start-Hidden $Bore @("local", "$RelayPort", "--to", "bore.pub") "bore.log"
+        } catch {
+            Fail ("Could not start bore: $($_.Exception.Message)`n" +
+                "       Windows Defender often blocks it. Host from a Mac/Linux machine, use -Local, or pass -Relay <host:port>.")
+        }
+        $PublicRelay = Wait-ForMatch @($boreLog, "$boreLog.err") "bore\.pub:\d+" "The bore tunnel"
+    }
 
     Say "Opening a public HTTPS address for the coordinator (Cloudflare)"
     $cfLog = Start-Hidden $Cloudflared @("tunnel", "--no-autoupdate", "--url", "http://localhost:$Port") "cloudflared.log"

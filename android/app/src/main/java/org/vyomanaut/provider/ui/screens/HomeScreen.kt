@@ -229,7 +229,7 @@ private fun RegistrationPanel(
             engineState is EngineState.Registering -> Text("Contacting the coordinator...")
 
             engineState is EngineState.AwaitingOtp -> {
-                Text("The coordinator sent a 6-digit code. Ask the network operator to read it from the coordinator's console.")
+                Text("The coordinator sent a 6-digit code. Ask the host for it: it shows on their join desk.")
                 PixelTextField(
                     value = otp,
                     onValueChange = { otp = it.filter(Char::isDigit).take(OTP_DIGITS) },

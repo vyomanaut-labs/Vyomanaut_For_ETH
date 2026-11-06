@@ -11,6 +11,8 @@ class ProviderProcess(
     private val binary: File,
     private val workDir: File,
     private val tempDir: File,
+    /** The phone's DNS servers: Android has no /etc/resolv.conf for the Go program to read. */
+    private val dnsServers: List<String> = emptyList(),
 ) {
     @Volatile private var process: Process? = null
     private var stdin: Writer? = null
@@ -24,6 +26,7 @@ class ProviderProcess(
         // Android apps have no HOME; the Go program looks for one when building default paths.
         builder.environment()["HOME"] = workDir.absolutePath
         builder.environment()["TMPDIR"] = tempDir.absolutePath
+        if (dnsServers.isNotEmpty()) builder.environment()["VYOMANAUT_DNS_SERVERS"] = dnsServers.joinToString(",")
         val started = builder.start()
         process = started
         stdin = started.outputStream.bufferedWriter()
