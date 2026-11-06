@@ -22,6 +22,8 @@ import androidx.compose.ui.unit.dp
 import org.vyomanaut.provider.network.AddressPicker
 import org.vyomanaut.provider.network.CheckResult
 import org.vyomanaut.provider.network.CoordinatorCheck
+import org.vyomanaut.provider.network.JoinNetwork
+import org.vyomanaut.provider.payments.PaymentsSettings
 import org.vyomanaut.provider.network.NetworkRules
 import org.vyomanaut.provider.network.NetworkStatus
 import org.vyomanaut.provider.network.RelayRules
@@ -55,9 +57,14 @@ fun NetworkScreen() {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        ScreenTitle("Network", "Link to the coordinator")
+        ScreenTitle("Network", store.networkName().ifEmpty { "Link to the coordinator" })
 
-        PixelPanel(title = "ZeroTier") {
+        PixelPanel {
+            Text("Easiest: scan the host's QR code and tap \"Open in the app\". Everything below fills in by itself.")
+        }
+
+        // ZeroTier is optional now that the relay carries audits and uploads: show it only to people who use it.
+        if (status.zeroTierInstalled || status.vpnActive) PixelPanel(title = "ZeroTier (optional)") {
             Text(
                 if (status.zeroTierInstalled) "ZeroTier app: installed" else "ZeroTier app: not installed",
                 color = if (status.zeroTierInstalled) PixelColors.Good else PixelColors.Bad,
@@ -101,7 +108,7 @@ fun NetworkScreen() {
             PixelTextField(
                 value = relayText,
                 onValueChange = { relayText = it },
-                label = "Relay (empty = coordinator host :${RelayRules.DEFAULT_RELAY_PORT}, or off)",
+                label = "Relay (empty = ask the coordinator, or off)",
                 placeholder = RelayRules.defaultFor(urlText) ?: "10.35.114.52:${RelayRules.DEFAULT_RELAY_PORT}",
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
             )
@@ -129,6 +136,21 @@ fun NetworkScreen() {
                             checking = true
                             scope.launch {
                                 result = CoordinatorCheck.check(url)
+                                // A coordinator behind a tunnel has its relay somewhere else: ask it, unless the
+                                // person typed a relay themselves.
+                                if (result is CheckResult.Reachable) {
+                                    JoinNetwork.fetchInfo(url)?.let { info ->
+                                        if (relayText.isBlank() && info.relay != null) {
+                                            store.saveRelay(info.relay)
+                                            relayText = info.relay
+                                        }
+                                        store.saveNetworkName(info.networkName)
+                                        val payments = PaymentsSettings(context)
+                                        if (payments.savedChainApiUrl().isBlank() && info.chainApiUrl != null) {
+                                            payments.save(info.chainApiUrl, payments.savedRpcUrl())
+                                        }
+                                    }
+                                }
                                 checking = false
                             }
                         }
@@ -167,15 +189,17 @@ private fun AdvertisedAddressPanel(status: NetworkStatus, coordinatorUrl: String
     val picked = AddressPicker.pick(status.allAddresses, host)
     PixelPanel(title = "This phone's address") {
         if (picked == null) {
-            Text("No network address yet. Connect to the coordinator's Wi-Fi or turn on ZeroTier.", color = PixelColors.Bad)
+            Text("No network address yet. Connect to Wi-Fi or mobile data.", color = PixelColors.Bad)
             return@PixelPanel
         }
-        Text("Advertised to the network: ${picked.address} " + if (picked.isVpn) "(ZeroTier)" else "(Wi-Fi / local network)")
+        if (relay == null) {
+            Text("Advertised to the network: ${picked.address} " + if (picked.isVpn) "(ZeroTier)" else "(Wi-Fi / local network)")
+        }
         if (relay != null) {
             // Works on any network: a coordinator in the cloud, a home router, mobile data or ZeroTier.
             Text(
-                "Audits and file uploads reach this phone through the relay at $relay, so it works from any " +
-                    "network. The coordinator runs the relay (`go run ./cmd/relay`).",
+                "Audits and file uploads reach this phone through the relay at $relay, so it works on any " +
+                    "Wi-Fi or mobile data.",
                 color = PixelColors.Good,
             )
         } else if (picked.isVpn) {

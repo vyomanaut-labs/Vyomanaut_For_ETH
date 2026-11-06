@@ -11,10 +11,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import org.vyomanaut.provider.network.JoinLink
 import org.vyomanaut.provider.ui.pixel.PixelColors
 import org.vyomanaut.provider.ui.pixel.PixelNavBar
 import org.vyomanaut.provider.ui.pixel.SpaceBackground
 import org.vyomanaut.provider.ui.screens.HomeScreen
+import org.vyomanaut.provider.ui.screens.JoinDialog
 import org.vyomanaut.provider.ui.screens.NetworkScreen
 import org.vyomanaut.provider.ui.screens.PaymentsScreen
 import org.vyomanaut.provider.ui.screens.StorageScreen
@@ -27,8 +29,21 @@ enum class Tab(val label: String) {
 }
 
 @Composable
-fun VyomanautApp() {
+fun VyomanautApp(pendingJoin: JoinLink? = null, onJoinHandled: () -> Unit = {}) {
     var tab by rememberSaveable { mutableStateOf(Tab.Home) }
+    // Bumped after a join so every screen re-reads the saved settings.
+    var joinCount by rememberSaveable { mutableStateOf(0) }
+    if (pendingJoin != null) {
+        JoinDialog(
+            link = pendingJoin,
+            onJoined = {
+                joinCount++
+                tab = Tab.Home
+                onJoinHandled()
+            },
+            onDismiss = onJoinHandled,
+        )
+    }
     Box(modifier = Modifier.fillMaxSize()) {
         SpaceBackground()
         Scaffold(
@@ -43,6 +58,7 @@ fun VyomanautApp() {
                 )
             },
         ) { padding ->
+            androidx.compose.runtime.key(joinCount) {
             Box(modifier = Modifier.padding(padding).fillMaxSize()) {
                 when (tab) {
                     Tab.Home -> HomeScreen()
@@ -50,6 +66,7 @@ fun VyomanautApp() {
                     Tab.Storage -> StorageScreen()
                     Tab.Network -> NetworkScreen()
                 }
+            }
             }
         }
     }
