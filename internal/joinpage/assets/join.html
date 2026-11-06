@@ -1,0 +1,118 @@
+{{define "style"}}<style>
+:root{--bg:#070b1a;--card:#111833;--line:#25305a;--text:#e9ecff;--dim:#9aa3c7;--accent:#7cf2c8;--accent2:#8fa8ff;--warn:#ffcf70;--bad:#ff8a8a}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(1200px 600px at 70% -10%,#1b2557 0,transparent 60%),var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh}
+main{max-width:720px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:1.7rem;margin:.2em 0 .1em;letter-spacing:-.01em}
+h2{font-size:1.15rem;margin:0 0 .6em}
+.sub{color:var(--dim);margin:0 0 1.4em}
+.brand{color:var(--accent);font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:.8rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin:14px 0}
+.step{display:flex;gap:14px;align-items:flex-start;margin:14px 0}
+.num{flex:0 0 32px;height:32px;border-radius:50%;background:var(--accent);color:#04121a;font-weight:800;display:grid;place-items:center}
+.btn{display:block;text-align:center;text-decoration:none;font-weight:700;padding:14px 16px;border-radius:12px;background:var(--accent);color:#04121a;margin:8px 0;border:0;font-size:1rem;width:100%;cursor:pointer}
+.btn.alt{background:transparent;color:var(--text);border:1px solid var(--line)}
+.hint{color:var(--dim);font-size:.9rem;margin:.2em 0 0}
+code,.cmd{font-family:ui-monospace,Consolas,"SF Mono",monospace}
+.cmd{display:block;background:#050816;border:1px solid var(--line);border-radius:10px;padding:12px;overflow-x:auto;white-space:nowrap;font-size:.9rem;color:var(--accent)}
+.tabs{display:flex;gap:6px;margin-bottom:10px}
+.tab{flex:1;padding:10px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--dim);font-weight:600;cursor:pointer;font-size:.95rem}
+.tab[aria-selected=true]{background:var(--accent2);color:#06102a;border-color:var(--accent2)}
+.hidden{display:none}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:.88rem;color:var(--dim)}
+.kv b{color:var(--text);font-weight:500;word-break:break-all}
+details summary{cursor:pointer;color:var(--dim)}
+footer{color:var(--dim);font-size:.85rem;margin-top:28px}
+</style>{{end}}<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Join {{.NetworkName}}</title>{{template "style"}}</head>
+<body><main>
+<div class="brand">Vyomanaut</div>
+<h1>Join {{.NetworkName}}</h1>
+<p class="sub">Lend a little free space. Your device keeps encrypted pieces of other people's files. It can't read them, and nobody can read yours.</p>
+
+<section id="phone" class="card">
+  <h2>On an Android phone</h2>
+  <div class="step"><div class="num">1</div><div style="flex:1">
+    <a class="btn" href="{{.AppDownloadURL}}">Download the app</a>
+    <p class="hint">Open the downloaded file and allow your browser to install apps if asked.</p>
+  </div></div>
+  <div class="step"><div class="num">2</div><div style="flex:1">
+    <a class="btn" id="open-app" href="{{.IntentLink}}">Open in the app</a>
+    <p class="hint">Fills in this network for you. Nothing to type.</p>
+  </div></div>
+  <div class="step"><div class="num">3</div><div style="flex:1">
+    <b>Tap Register.</b> Enter your phone number, then the 6-digit code the host reads to you.
+  </div></div>
+  <p class="hint hidden" id="iphone-note">On an iPhone? The app is Android-only for now. Join from a laptop instead.</p>
+</section>
+
+<section id="laptop" class="card">
+  <h2>On a laptop</h2>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" data-os="win" aria-selected="true">Windows</button>
+    <button class="tab" role="tab" data-os="unix" aria-selected="false">macOS / Linux</button>
+  </div>
+  <div data-pane="win">
+    <p class="hint" style="margin-bottom:8px">Open <b>PowerShell</b> and paste:</p>
+    <code class="cmd" id="cmd-win">{{.PsCommand}}</code>
+    <button class="btn alt" data-copy="cmd-win">Copy</button>
+  </div>
+  <div data-pane="unix" class="hidden">
+    <p class="hint" style="margin-bottom:8px">Open <b>Terminal</b> and paste:</p>
+    <code class="cmd" id="cmd-unix">{{.ShCommand}}</code>
+    <button class="btn alt" data-copy="cmd-unix">Copy</button>
+  </div>
+  <p class="hint">It downloads the provider, asks for your phone number and the host's code, and starts. Run the same line again any time to restart.</p>
+</section>
+
+<section class="card" id="share-card">
+  <h2>Joining from another device?</h2>
+  <p class="hint" style="margin-bottom:8px">Send this page to it:</p>
+  <code class="cmd">{{.JoinURL}}</code>
+  <button class="btn alt" id="share">Share or copy link</button>
+</section>
+
+<details class="card"><summary>Network details (for typing in by hand)</summary>
+  <div class="kv" style="margin-top:10px">
+    <span>Coordinator</span><b>{{.CoordinatorURL}}</b>
+    <span>Relay</span><b>{{range $i, $r := .RelayAddrs}}{{if $i}}, {{end}}{{$r}}{{end}}</b>
+    {{if .ChainAPIURL}}<span>Chain API</span><b>{{.ChainAPIURL}}</b>{{end}}
+  </div>
+</details>
+
+<footer>You choose how much space to lend and can stop at any time. Open source: github.com/vyomanaut-labs/Vyomanaut_For_ETH</footer>
+</main>
+<script>
+(function(){
+  var ua = navigator.userAgent || "";
+  var android = /Android/i.test(ua), ios = /iPhone|iPad|iPod/i.test(ua);
+  var mobile = android || ios;
+  var phone = document.getElementById("phone"), laptop = document.getElementById("laptop");
+  if (!mobile) { phone.parentNode.insertBefore(laptop, phone); }
+  if (ios) { document.getElementById("iphone-note").className = "hint"; }
+  else { document.getElementById("iphone-note").style.display = "none"; }
+  // Outside Chrome on Android the intent: link does nothing; use the plain link.
+  if (!android) { document.getElementById("open-app").setAttribute("href", {{.AppLinkURL}}); }
+  if (/Mac|Linux|X11/i.test(ua) && !mobile) select("unix");
+  document.querySelectorAll(".tab").forEach(function(t){ t.onclick = function(){ select(t.dataset.os); }; });
+  function select(os){
+    document.querySelectorAll(".tab").forEach(function(t){ t.setAttribute("aria-selected", t.dataset.os === os); });
+    document.querySelectorAll("[data-pane]").forEach(function(p){ p.className = p.dataset.pane === os ? "" : "hidden"; });
+  }
+  function copy(text, btn){
+    var done = function(){ var o = btn.textContent; btn.textContent = "Copied"; setTimeout(function(){ btn.textContent = o; }, 1500); };
+    if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, function(){ prompt("Copy this:", text); });
+    else prompt("Copy this:", text);
+  }
+  document.querySelectorAll("[data-copy]").forEach(function(b){
+    b.onclick = function(){ copy(document.getElementById(b.dataset.copy).textContent, b); };
+  });
+  document.getElementById("share").onclick = function(){
+    var url = {{.JoinURL}};
+    if (navigator.share) navigator.share({title: "Join {{.NetworkName}}", url: url}).catch(function(){});
+    else copy(url, this);
+  };
+})();
+</script>
+</body></html>

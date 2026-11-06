@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Join {{.NetworkName}}</title>{{template "style"}}
+<style>
+main{max-width:1100px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:40px;align-items:center;min-height:100vh;padding:32px 24px}
+.qr{background:#fff;border-radius:24px;padding:22px;width:100%;max-width:480px;justify-self:center}
+.qr img{width:100%;display:block;image-rendering:pixelated}
+h1{font-size:2.6rem;line-height:1.1}
+.big{font-size:1.25rem;margin:18px 0}
+.url{font-family:ui-monospace,Consolas,monospace;color:var(--accent);font-size:1.1rem;word-break:break-all;background:#050816;border:1px solid var(--line);border-radius:12px;padding:12px}
+@media (max-width:760px){main{grid-template-columns:1fr;gap:20px}h1{font-size:1.9rem}}
+</style></head>
+<body><main>
+<div>
+  <div class="brand">Vyomanaut</div>
+  <h1>Join {{.NetworkName}}</h1>
+  <p class="big"><b>Phone:</b> point your camera at the code.</p>
+  <p class="big"><b>Laptop:</b> open this address:</p>
+  <div class="url">{{.JoinURL}}</div>
+  <p class="hint" style="margin-top:18px">Then ask the host for your 6-digit code.</p>
+</div>
+<div class="qr"><img src="/join/qr.png" alt="QR code for {{.JoinURL}}"></div>
+</main></body></html>

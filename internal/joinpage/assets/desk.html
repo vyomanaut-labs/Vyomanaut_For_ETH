@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Join desk</title>{{template "style"}}
+<style>
+main{max-width:900px}
+.row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:14px 16px;border:1px solid var(--line);border-radius:14px;margin:10px 0;background:var(--card)}
+.code{font-family:ui-monospace,Consolas,monospace;font-size:2.4rem;font-weight:800;letter-spacing:.18em;color:var(--accent)}
+.phone{font-size:1.1rem;font-weight:600}
+.state{font-size:.85rem;padding:3px 10px;border-radius:99px;display:inline-block;margin-top:4px}
+.waiting{background:#2a3566;color:var(--text)}
+.joined{background:#123d33;color:var(--accent)}
+.expired{background:#3a2424;color:var(--bad)}
+.row.done .code{color:var(--dim);font-size:1.6rem}
+.top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.stats{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 4px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;min-width:120px}
+.stat b{display:block;font-size:1.6rem}
+.stat span{color:var(--dim);font-size:.85rem}
+input{width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:#050816;color:var(--text);font:inherit}
+.err{color:var(--bad)}
+a{color:var(--accent2)}
+</style></head>
+<body><main>
+<div class="top">
+  <div><div class="brand">Vyomanaut · host only</div><h1>Join desk</h1></div>
+  <div class="hint"><a href="/join/screen" target="_blank">Open the QR screen</a> · <a href="#" id="lock">Lock</a></div>
+</div>
+
+<section id="login" class="card hidden">
+  <h2>Enter your admin key</h2>
+  <p class="hint">The ADMIN_API_KEY your host script printed. It stays in this browser only.</p>
+  <form id="login-form"><input id="key" type="password" autocomplete="off" placeholder="64 hex characters" style="margin:10px 0"><button class="btn">Open the desk</button></form>
+  <p id="login-err" class="err"></p>
+</section>
+
+<section id="desk" class="hidden">
+  <div class="stats">
+    <div class="stat"><b id="n-online">–</b><span>devices online</span></div>
+    <div class="stat"><b id="n-total">–</b><span>devices joined</span></div>
+    <div class="stat"><b id="n-waiting">–</b><span>waiting for a code</span></div>
+  </div>
+  <p class="hint">When someone taps Register, their code appears here. Read it to them. It works once, for 10 minutes.</p>
+  <div id="list"></div>
+  <p id="empty" class="hint hidden" style="text-align:center;padding:30px">No one is waiting. Codes appear here the moment someone registers.</p>
+  <p id="desk-err" class="err"></p>
+</section>
+</main>
+<script>
+(function(){
+  var KEY_NAME = "vyomanaut-desk-key";
+  function load(){ try { return localStorage.getItem(KEY_NAME) || ""; } catch (e) { return mem; } }
+  function save(k){ mem = k; try { if (k) localStorage.setItem(KEY_NAME, k); else localStorage.removeItem(KEY_NAME); } catch (e) {} }
+  var mem = "";
+  // The host script opens /join/desk#key=...: take it, then wipe it from the address bar.
+  var m = location.hash.match(/key=([0-9a-fA-F]+)/);
+  if (m) { save(m[1]); history.replaceState(null, "", location.pathname); }
+  var key = load(), timer = null;
+
+  function show(id){ ["login","desk"].forEach(function(s){ document.getElementById(s).className = s === id ? "" : "hidden"; }); if (id === "login") document.getElementById("login").className = "card"; }
+  function mask(p){ return p.length > 6 ? p.slice(0, 3) + " ••• " + p.slice(-4) : p; }
+  function ago(t){ var s = Math.max(0, Math.round((Date.now() - new Date(t)) / 1000)); return s < 60 ? s + "s ago" : Math.floor(s / 60) + " min ago"; }
+  function left(t){ var s = Math.round((new Date(t) - Date.now()) / 1000); return s <= 0 ? "" : " · " + Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0") + " left"; }
+  function el(tag, cls, text){ var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+  function get(path){
+    return fetch(path, {headers: {"X-Admin-API-Key": key}, cache: "no-store"}).then(function(r){
+      if (r.status === 401) throw new Error("auth");
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    });
+  }
+
+  function tick(){
+    get("/join/desk/requests").then(function(d){
+      document.getElementById("desk-err").textContent = d.enabled ? "" : "Join codes are shown only when the coordinator runs in demo mode.";
+      var list = document.getElementById("list"); list.textContent = "";
+      var waiting = 0;
+      d.requests.forEach(function(r){
+        if (r.state === "waiting") waiting++;
+        var row = el("div", "row" + (r.state === "waiting" ? "" : " done"));
+        var a = el("div");
+        a.appendChild(el("div", "phone", mask(r.phone)));
+        var label = r.state === "waiting" ? "waiting" + left(r.expires_at) : r.state === "joined" ? "joined ✓" : "expired, ask them to tap Register again";
+        a.appendChild(el("span", "state " + r.state, label));
+        a.appendChild(el("div", "hint", ago(r.sent_at)));
+        row.appendChild(a);
+        row.appendChild(el("div", "code", r.code));
+        list.appendChild(row);
+      });
+      document.getElementById("empty").className = d.requests.length ? "hint hidden" : "hint";
+      document.getElementById("n-waiting").textContent = waiting;
+    }).catch(fail);
+    get("/api/v1/admin/providers?limit=200").then(function(d){
+      var ps = d.providers || [], online = 0, total = 0;
+      ps.forEach(function(p){ if (p.status === "DEPARTED") return; total++; if (p.last_heartbeat_ts && Date.now() - new Date(p.last_heartbeat_ts) < 120000) online++; });
+      document.getElementById("n-online").textContent = online;
+      document.getElementById("n-total").textContent = total;
+    }).catch(function(){});
+  }
+  function fail(e){
+    if (e.message === "auth") { stop(); save(""); key = ""; show("login"); document.getElementById("login-err").textContent = "That key did not work."; }
+    else document.getElementById("desk-err").textContent = "Cannot reach the coordinator (" + e.message + "). Retrying…";
+  }
+  function start(){ show("desk"); tick(); stop(); timer = setInterval(tick, 2000); }
+  function stop(){ if (timer) clearInterval(timer); timer = null; }
+
+  document.getElementById("login-form").onsubmit = function(ev){ ev.preventDefault(); key = document.getElementById("key").value.trim(); save(key); document.getElementById("login-err").textContent = ""; start(); };
+  document.getElementById("lock").onclick = function(ev){ ev.preventDefault(); stop(); save(""); key = ""; show("login"); };
+  if (key) start(); else show("login");
+})();
+</script>
+</body></html>
