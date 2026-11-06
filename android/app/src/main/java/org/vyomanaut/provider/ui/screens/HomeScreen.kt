@@ -33,6 +33,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import org.vyomanaut.provider.config.DemoProfile
 import org.vyomanaut.provider.engine.ConfigResult
 import org.vyomanaut.provider.engine.EngineConfigs
@@ -41,6 +42,9 @@ import org.vyomanaut.provider.engine.EngineStore
 import org.vyomanaut.provider.engine.ProviderArgs
 import org.vyomanaut.provider.engine.ProviderEngine
 import org.vyomanaut.provider.network.OnboardingStore
+import org.vyomanaut.provider.power.ChecklistStore
+import org.vyomanaut.provider.power.OemGuides
+import org.vyomanaut.provider.power.StartReadiness
 import org.vyomanaut.provider.service.ProviderController
 import org.vyomanaut.provider.service.ProviderRuntime
 import org.vyomanaut.provider.storage.LimitStore
@@ -69,6 +73,18 @@ fun HomeScreen() {
 
     var notificationsGranted by remember { mutableStateOf(hasNotificationPermission(context)) }
     var batteryExempt by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
+    val checklist = remember { ChecklistStore(context) }
+    var zeroTierExempt by remember { mutableStateOf(checklist.zeroTierExempt()) }
+    var oemDone by remember { mutableStateOf(checklist.oemSettingsDone()) }
+    val oemGuide = remember { OemGuides.forManufacturer(Build.MANUFACTURER, Build.BRAND) }
+    val missingSteps = StartReadiness.missingSteps(batteryExempt, zeroTierExempt)
+
+    // The user may change battery or notification settings outside the app; re-read them on return.
+    LifecycleResumeEffect(Unit) {
+        batteryExempt = isIgnoringBatteryOptimizations(context)
+        notificationsGranted = hasNotificationPermission(context)
+        onPauseOrDispose { }
+    }
 
     val notificationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -99,7 +115,7 @@ fun HomeScreen() {
             } else {
                 PixelButton(
                     text = "Start provider",
-                    enabled = binaryAvailable && registered,
+                    enabled = binaryAvailable && registered && missingSteps.isEmpty(),
                     onClick = {
                         if (!notificationsGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                             notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -111,6 +127,7 @@ fun HomeScreen() {
                 if (!binaryAvailable || !registered) {
                     Text("Register this phone below before starting.", color = PixelColors.Muted)
                 }
+                missingSteps.forEach { Text(it, color = PixelColors.Gold) }
             }
         }
 
@@ -131,31 +148,29 @@ fun HomeScreen() {
             }
         }
 
-        PixelPanel(title = "Power-ups") {
-            Text(
-                if (notificationsGranted) "Notifications: on" else "Notifications: off",
-                color = if (notificationsGranted) PixelColors.Good else PixelColors.Bad,
-            )
-            Text(
-                if (batteryExempt) "Battery optimisation: exempt"
-                else "Battery optimisation: on. Android may stop the provider in the background.",
-                color = if (batteryExempt) PixelColors.Good else PixelColors.Bad,
-            )
-            if (!batteryExempt) {
-                PixelButton(
-                    text = "Allow background running",
-                    color = PixelColors.PanelLight,
-                    onClick = {
-                        batteryLauncher.launch(
-                            Intent(
-                                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                                Uri.parse("package:${context.packageName}"),
-                            ),
-                        )
-                    },
+        ReadinessPanel(
+            notificationsGranted = notificationsGranted,
+            appBatteryExempt = batteryExempt,
+            onRequestAppExemption = {
+                batteryLauncher.launch(
+                    Intent(
+                        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                        Uri.parse("package:${context.packageName}"),
+                    ),
                 )
-            }
-        }
+            },
+            zeroTierExempt = zeroTierExempt,
+            onZeroTierExemptChange = {
+                zeroTierExempt = it
+                checklist.setZeroTierExempt(it)
+            },
+            oemGuide = oemGuide,
+            oemDone = oemDone,
+            onOemDoneChange = {
+                oemDone = it
+                checklist.setOemSettingsDone(it)
+            },
+        )
 
         PixelPanel(title = "Network profile: demo") {
             Text("Erasure code RS(${DemoProfile.DATA_SHARDS},${DemoProfile.TOTAL_SHARDS}), minimum ${DemoProfile.MIN_ACTIVE_PROVIDERS} providers")
