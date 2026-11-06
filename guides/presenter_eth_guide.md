@@ -50,7 +50,7 @@ Say this in your own words:
 
 ---
 
-## 2. What we added, in four sentences
+## 2. What we added, in five points
 
 1. **A locked box (the escrow contract).** Owners put USDT in. Only its fixed rules can take
    it out. We cannot withdraw it, and nobody can change the rules.
@@ -92,29 +92,40 @@ Starting point proof: commit `086be48` (29 Sep 2026), tag `pre-ethglobal-mumbai`
 
 ---
 
-## 4. The live demo (about three minutes)
+## 4. The live demo: the original demo, then the blockchain finale
 
-Practise it three times. Pre-type every command in a text file so you only paste.
+The blockchain is switched on from the first minute but stays invisible. **Act 1 is the original
+Vyomanaut demo, run exactly as the operator guide describes.** Act 2 is a four-scene finale on the same
+running network, about four minutes, and each scene answers one trust question. Details and exact
+commands: `operator_eth_guide.md`, Parts 4 and 5.
 
-| Time | Who | What you do | What you say |
+**Act 1 (as before):** providers join, the owner uploads, stored pieces look like noise, a machine dies and
+the file still comes back, payments move in the ledger. Say nothing about the blockchain yet.
+
+**Act 2: the finale.** Practise it three times. Pre-type every command in a text file so you only paste.
+
+| Scene | Who | What you do | What you say |
 | --- | --- | --- | --- |
-| 0:00 | Operator | Show the console with 5+ providers `ACTIVE` | "Real computers storing encrypted pieces. Nothing new for them." |
-| 0:20 | Owner | `vyomachain deposit --amount 1 …`; open the `deposited` link on the explorer | "The owner puts one USDT into the contract. That link is public and permanent." |
-| 0:50 | Operator | Show `[CHAIN] credited …`, then `client balance` shows ₹1,000 | "Our normal account now shows it. The ledger follows the chain." |
-| 1:10 | Owner | Upload a file | "Storing a file costs money, charged per audit period." |
-| 1:30 | Operator | Show `period N posted` | "Here, earnings became a list on the blockchain. We just made a promise we cannot take back." |
-| 1:40 | Operator | Run `scripts/demo/chain_escape.sh` (it stops only the coordinator) | "Now we disappear." |
-| 2:00 | Bystander | The script waits out the window, then claims from a different wallet | "A stranger presses the button. We are not involved." |
-| 2:30 | Anyone | Show the provider's wallet page: USDT arrived. Point at *caller ≠ account* | "The provider is paid. The money went to the provider, not to the stranger." |
-| 2:50 | Owner | (Only if 15 minutes have passed) `vyomachain refund` | "And the owner can leave with what is left." |
-| optional | Operator | Before the coordinator moment: `scripts/demo/chain_tamper.sh` | "Now I secretly change one audit record. The blockchain still remembers the old fingerprint, so the check fails." |
+| 2.1 Audit anchoring | Operator | `verifyreceipt epoch latest` → MATCH. Then `scripts/demo/chain_tamper.sh` → MATCH, then MISMATCH | "Everything you just watched was fingerprinted onto a public chain every two minutes. Now I secretly change one record. The chain still remembers the old fingerprint, so the check fails. We cannot quietly rewrite history." |
+| 2.2 Payout address | Operator | List the providers' payout wallets; open one on the explorer; the owner runs `wallet bind` | "Each provider has an address on a public chain, and nobody installed a wallet. The owner proves they hold theirs by signing a sentence with it." |
+| 2.3 Escrow | Owner | `vyomachain deposit --amount 1 …`; open the `deposited` link. Watch `credited`, `posted`, `claimed` | "The owner puts real test USDT into a contract. It pays what the providers earned during the demo. We posted a list we cannot take back, then sent each provider its money." |
+| 2.4 Capstone | Operator | On the next `posted` line, run `scripts/demo/chain_escape.sh` | "Now we disappear." (the script stops only the coordinator) |
+| | Bystander | The script waits out the window, then claims from a different wallet | "A stranger presses the button. We are not involved." |
+| | Anyone | Show the provider's wallet page: USDT arrived. Point at *caller ≠ account* | "The provider is paid. The money went to the provider, not to the stranger." |
+| | Owner | (Only if 15 minutes have passed) `vyomachain refund` | "And the owner can leave with what is left." |
 
-> **Do the first part before the audience arrives** and keep a finished example open in a
-> browser tab: the 120-second window and the 15-minute silence rule are long. Run the
-> real thing for the video; show the prepared tab in the booth.
+> **Leave ten minutes between the upload and Act 2**, so the providers have earned something to pay. Skip
+> the "delete a file" step of Act 1 until the end: deleting stops the charges that fund the finale.
 >
-> If the network or testnet fails in the room: show the explorer links from an earlier
-> run and the recorded video, and say so. Never pretend a recording is live.
+> Amounts are tiny (fractions of a USDT) because the demo file is small. Say so before anyone asks; the
+> flow is the point.
+>
+> **Do the first part before the audience arrives** and keep a finished example open in a browser tab: the
+> 120-second window and the 15-minute silence rule are long. Run the real thing for the video; show the
+> prepared tab in the booth.
+>
+> If the network or testnet fails in the room: show the explorer links from an earlier run and the
+> recorded video, and say so. Never pretend a recording is live.
 
 ---
 

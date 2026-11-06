@@ -1,10 +1,14 @@
 package chainsettle
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"math/big"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -478,5 +482,28 @@ func TestConfigValidation(t *testing.T) {
 	}
 	if _, err := New(nil, nil, nil, Config{MaxPayees: -1}); !errors.Is(err, ErrConfig) {
 		t.Fatalf("err = %v, want ErrConfig", err)
+	}
+}
+
+func TestTheWaitingLineIsPrintedAtMostOncePerMinute(t *testing.T) {
+	var out bytes.Buffer
+	log.SetOutput(&out)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	now := time.Unix(1_700_000_000, 0)
+	s := &Service{now: func() time.Time { return now }}
+	count := func() int { return strings.Count(out.String(), "earned release(s) are waiting") }
+
+	s.logWaiting(3)
+	s.logWaiting(3)
+	now = now.Add(59 * time.Second)
+	s.logWaiting(4)
+	if count() != 1 {
+		t.Fatalf("printed %d times within a minute, want 1", count())
+	}
+	now = now.Add(2 * time.Second)
+	s.logWaiting(4)
+	if count() != 2 {
+		t.Fatalf("printed %d times after a minute, want 2", count())
 	}
 }

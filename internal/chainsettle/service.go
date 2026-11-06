@@ -65,6 +65,10 @@ type Service struct {
 	obs    Observer
 	now    func() time.Time
 	noLock bool
+
+	// lastWaitLog is when the "earnings are waiting for on-chain USDT" line was
+	// last printed, so a long wait is one line a minute and not one per cycle.
+	lastWaitLog time.Time
 }
 
 // Option customises a Service.

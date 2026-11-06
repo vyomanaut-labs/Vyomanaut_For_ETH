@@ -52,7 +52,7 @@ func (s *Service) reserveNew(ctx context.Context) error {
 
 	items, payouts, total := s.batch(releases, capacity)
 	if total == 0 {
-		log.Printf("[CHAIN] %d releases are waiting but owners' charges or on-chain credit cannot fund them yet", len(releases))
+		s.logWaiting(len(releases))
 		return nil
 	}
 	debits, err := SplitDebits(total, owners)
@@ -77,6 +77,21 @@ func (s *Service) reserveNew(ctx context.Context) error {
 	s.obs.PeriodReserved(total, len(payouts))
 	log.Printf("[CHAIN] reserved period %d: %d releases, %d payees, %d micro-units", period, len(items), len(payouts), total)
 	return nil
+}
+
+// waitLogEvery is how often the waiting line may repeat.
+const waitLogEvery = time.Minute
+
+// logWaiting says that earned releases are waiting for on-chain USDT. A demo
+// that runs for an hour before the first deposit would otherwise print it every
+// poll cycle, so it repeats at most once a minute.
+func (s *Service) logWaiting(n int) {
+	now := s.now()
+	if !s.lastWaitLog.IsZero() && now.Sub(s.lastWaitLog) < waitLogEvery {
+		return
+	}
+	s.lastWaitLog = now
+	log.Printf("[CHAIN] %d earned release(s) are waiting: the owners have no on-chain USDT to pay them from yet (deposit with vyomachain)", n)
 }
 
 // batch picks releases, oldest first, until the payee limit or the owners'
