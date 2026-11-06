@@ -53,6 +53,7 @@ import (
 	_ "github.com/lib/pq"
 
 	"github.com/vyomanaut-labs/Vyomanaut_V2/internal/api"
+	"github.com/vyomanaut-labs/Vyomanaut_V2/internal/joinpage"
 	"github.com/vyomanaut-labs/Vyomanaut_V2/internal/audit"
 	"github.com/vyomanaut-labs/Vyomanaut_V2/internal/cluster"
 	"github.com/vyomanaut-labs/Vyomanaut_V2/internal/config"
@@ -484,6 +485,15 @@ func runMicroservice(ctx context.Context, cfg startupConfig) (*app, error) {
 		log.Printf("[STARTUP] OTP delivery log: %s (demo mode only — ADR-084 D-3)", cfg.OtpDeliveryLogPath)
 	}
 
+	// Join desk: in demo mode the host's /join/desk page shows each join
+	// code as it is sent (see internal/joinpage). The delivery log above
+	// still receives every code.
+	var joinDesk *joinpage.Desk
+	if profile.Mode == "demo" {
+		joinDesk = joinpage.NewDesk(otpSender, db)
+		otpSender = joinDesk
+	}
+
 	// ── Step 8 ────────────────────────────────────────────────────────────
 	router := api.NewRouter(api.RouterConfig{
 		AdminAPIKey:             adminAPIKey,
@@ -499,7 +509,11 @@ func runMicroservice(ctx context.Context, cfg startupConfig) (*app, error) {
 		ClusterSecretCache:      cache,
 		ExposePrometheusMetrics: cfg.ExposePrometheusMetrics,
 	})
-	httpServer := &http.Server{Addr: cfg.HTTPListenAddr, Handler: router}
+	joinCfg := joinpage.ConfigFromEnv()
+	joinCfg.Mode = profile.Mode
+	joinCfg.AdminAPIKey = adminAPIKey
+	joinCfg.Desk = joinDesk
+	httpServer := &http.Server{Addr: cfg.HTTPListenAddr, Handler: joinpage.Handler(router, joinCfg)}
 	a.httpServer = httpServer
 	go func() {
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
