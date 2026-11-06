@@ -52,6 +52,8 @@ log "building arkivcheck"
 go build -o "$BIN_DIR/arkivcheck" ./cmd/arkivcheck
 
 check() {
+  # lib/pq defaults to sslmode=require; the demo Postgres has no TLS.
+  PGSSLMODE="${PGSSLMODE:-disable}" \
   PGUSER=vyomanaut_app PGPASSWORD="$PGAPPPASSWORD" PGHOST="$PGHOST" PGPORT="$PGPORT" PGDATABASE="$PGDATABASE" \
     "$BIN_DIR/arkivcheck" --limit 5 audits
 }
