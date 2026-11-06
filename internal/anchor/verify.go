@@ -256,7 +256,7 @@ func (v *Verifier) rebuild(ctx context.Context, epoch uint64) (epochRow, []recei
 
 func (v *Verifier) addFinality(ctx context.Context, rep *EpochReport) {
 	rep.Finality = FinalityUnknown
-	if v.head == nil || len(rep.AnchorTx) != 32 {
+	if v.head == nil || len(rep.AnchorTx) != txHashLen {
 		return
 	}
 	var h [32]byte

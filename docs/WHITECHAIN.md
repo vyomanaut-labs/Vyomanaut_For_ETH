@@ -68,6 +68,33 @@ send, so a lost reply is adopted rather than repeated. Epoch numbers follow the
 chain, so they keep rising across database resets. A failed epoch leaves the
 next one starting from the same place.
 
+### Checking the history against the chain
+
+`verifyreceipt` is an operator-side tool (providers never run it). It rebuilds a
+root from the database and compares it with the root it reads **from the chain's
+RPC, never through the coordinator**: a verifier that asked the coordinator for
+the root would prove nothing.
+
+```bash
+go build -o verifyreceipt ./cmd/verifyreceipt
+export VYOMANAUT_CHAIN_RPC_URL=...  VYOMANAUT_CHAIN_ANCHOR_ADDRESS=0x...
+export PGHOST=localhost PGUSER=vyomanaut_app PGPASSWORD=... PGDATABASE=vyomanaut_demo
+
+verifyreceipt list                    # epochs the database says it anchored
+verifyreceipt epoch latest            # rebuild the newest epoch and compare
+verifyreceipt receipt <receipt_id>    # prove one receipt is inside its epoch
+```
+
+It prints MATCH or MISMATCH and how final the anchoring transaction is (soft:
+the sequencer's word; finalized: settled on Ethereum), and exits 0 on a match and
+1 on a mismatch. `scripts/demo/chain_tamper.sh` is the demo: it alters one stored
+receipt as a database owner could, and the check fails; `--restore` puts it back.
+
+What this does not prove: that a receipt was ever written. That is what the
+provider's own signature on a PASS is for. A receipt that commits later than the
+30-second settle lag after its timestamp can be missed by an epoch and will then
+look like an addition; the lag exists to make that rare.
+
 ## Binding wallets
 
 Until the CLI and API for this land, bind wallets directly:
