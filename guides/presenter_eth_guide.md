@@ -32,12 +32,12 @@ seen in the run of **Fri 6 Nov 2026** (coordinator log and screenshots).
 | Providers get a payout address automatically (custodial in the demo) | [x] `[CHAIN] assigned demo payout wallets to 7 provider(s)` |
 | Audit fingerprint anchored every 2 minutes | [x] `[ANCHOR] epoch N anchored`, epochs 114 to 139 |
 | `verifyreceipt` MATCH | [x] epoch 139, 804 receipts |
-| `chain_tamper.sh` → MISMATCH | [ ] |
+| `chain_tamper.sh` → MISMATCH | [x] epochs 146 and 148: MATCH, then MISMATCH naming the receipt, then restored to MATCH |
 | Providers' earnings are released every tick (patch 0017) | [x] 112 of 112 audit periods released, 9 `RELEASE` rows (before 0017 this was always 0) |
-| Owner binds a wallet and deposits real test USDT → `credited` | [ ] `[CHAIN] credited …` |
-| Payout `reserved` → `posted` → `claimed` | [ ] `[CHAIN] period N claimed` |
-| "Coordinator disappears, a stranger pays the provider" (`chain_escape.sh`) | [ ] |
-| Owner gets unspent USDT back (`vyomachain refund`, patch 0018) | [ ] |
+| Owner binds a wallet and deposits real test USDT → `credited` | [x] wallet `0x7CBE…FEb1` bound; 1 USDT deposited (approve and deposit explorer links). Still grep the `credited` log line |
+| Payout `reserved` → `posted` → `claimed` | [x] `vyomachain period 1`: fully claimed, 0.10946 USDT; a provider wallet now holds 0.01703 USDT. Owner's unspent credit 0.89054 = 1 − 0.10946 |
+| "Coordinator disappears, a stranger pays the provider" (`chain_escape.sh`) | [ ] first try was too late: the coordinator had already claimed |
+| Owner gets unspent USDT back (`vyomachain refund`, patch 0018) | [x] "too early, refunds open at 11:51:48 UTC", then "returned the unspent credit" with an explorer link. Still grep `[CHAIN] debited … for an on-chain refund` |
 | Grafana chain dashboard | [ ] |
 
 ### Arkiv (readable audit history)
@@ -47,10 +47,10 @@ seen in the run of **Fri 6 Nov 2026** (coordinator log and screenshots).
 | Mirror runs inside the same coordinator as the chain features | [x] `[ARKIV] mirror running … wallet 0x1044…27B9` |
 | Audit batches published, one per provider per 2-minute period | [x] many `audit_batch … published: entity 0x…`; explorer shows 199 transactions from our wallet |
 | Arkiv trouble does not disturb anything else | [x] 14:40 to 14:54 the key was wrong (401) while anchors carried on |
-| File manifest published after an upload | [ ] `file_manifest … published` |
+| File manifest published after an upload | [x] `file_manifest 01a1b07e… published: entity 0x0135c4aa…` |
 | File tombstone published after a delete | [ ] |
-| `arkivcheck audits` green, then `arkiv_tamper.sh` red | [ ] |
-| `arkivcheck public` (no database, anyone can run it) | [ ] |
+| `arkivcheck audits` green, then `arkiv_tamper.sh` red | [ ] green seen (5 verified); red not yet: the script tampered the wrong slice (fixed by patch 0021) |
+| `arkivcheck public` (no database, anyone can run it) | [x] 20 verified, 0 failed |
 | Arkiv dashboard in Grafana | [ ] |
 
 ---
@@ -569,7 +569,7 @@ Tick each line yourself.
 | A chain is slow | "Test networks have off days." Switch to the prepared explorer tab |
 | The chain connection drops | The log says "will retry". Point at it: "That is the system carrying on" |
 | Arkiv shows 401 or no entities | Check the access key file; if needed run without it. Say: "Arkiv trouble must not stop storage, and it does not" |
-| The coordinator claims before you stop it | "That is the happy path. Now the unhappy one" and replay the recording |
+| The coordinator claims before you stop it | "That is the happy path. Now the unhappy one" and replay the recording. To retry, deposit again (a refund empties the owner's credit, and nothing is posted without credit), wait for `posted`, then run `chain_escape.sh` at once |
 | `arkivcheck` cannot reach the database | `export PGSSLMODE=disable` and run it again |
 | A provider drops | Perfect. Show repair, then carry on |
 | You forget a number | Section 9 is open in a tab. Read it |
