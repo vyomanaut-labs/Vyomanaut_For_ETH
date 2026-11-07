@@ -93,16 +93,16 @@ class EngineConfigTest {
             "http://h:1", "+919876543210", 3 * BYTES_PER_GIB, listOf("10.35.114.30", "10.9.9.9"), "/d",
         )
         val ready = result as ConfigResult.Ready
-        // A 3 GB limit is below the coordinator minimum, so 10 GB is declared.
-        assertEquals(10, ready.config.storageGb)
+        // The coordinator accepts 1 GB and up, so the phone declares what it offers.
+        assertEquals(3, ready.config.storageGb)
         assertEquals("10.35.114.30", ready.config.advertiseAddr)
         assertEquals(30303, ready.config.listenPort)
     }
 
     @Test
-    fun builder_declares_the_coordinator_minimum_for_a_small_limit() {
+    fun builder_declares_whole_gib_of_a_small_limit() {
         val result = EngineConfigBuilder.build("http://h:1", "+919876543210", 2 * BYTES_PER_GIB + 600 * BYTES_PER_MIB, listOf("10.0.0.2"), "/d")
-        assertEquals(10, (result as ConfigResult.Ready).config.storageGb)
+        assertEquals(2, (result as ConfigResult.Ready).config.storageGb)
     }
 
     @Test

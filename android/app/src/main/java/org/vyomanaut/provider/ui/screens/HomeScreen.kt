@@ -21,8 +21,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -42,13 +45,22 @@ import org.vyomanaut.provider.engine.EngineStore
 import org.vyomanaut.provider.engine.ProviderArgs
 import org.vyomanaut.provider.engine.ProviderEngine
 import org.vyomanaut.provider.engine.RestartPolicy
+import org.vyomanaut.provider.network.CheckResult
+import org.vyomanaut.provider.network.CoordinatorCheck
+import org.vyomanaut.provider.network.NetworkStatusReader
 import org.vyomanaut.provider.network.OnboardingStore
 import org.vyomanaut.provider.power.ChecklistStore
 import org.vyomanaut.provider.power.OemGuides
-import org.vyomanaut.provider.power.StartReadiness
+import org.vyomanaut.provider.power.SetupInputs
+import org.vyomanaut.provider.power.SetupSteps
+import org.vyomanaut.provider.power.StepAction
 import org.vyomanaut.provider.service.ProviderController
 import org.vyomanaut.provider.service.ProviderRuntime
+import org.vyomanaut.provider.storage.BYTES_PER_GIB
+import org.vyomanaut.provider.storage.LimitRange
 import org.vyomanaut.provider.storage.LimitStore
+import org.vyomanaut.provider.storage.StatFsFreeSpace
+import org.vyomanaut.provider.storage.StorageLimitPolicy
 import org.vyomanaut.provider.storage.formatGiB
 import org.vyomanaut.provider.ui.pixel.PixelButton
 import org.vyomanaut.provider.ui.pixel.PixelColors
@@ -61,15 +73,17 @@ private const val LOG_FONT_SP = 11
 private const val OTP_DIGITS = 6
 
 @Composable
-fun HomeScreen() {
+fun HomeScreen(onOpenNetwork: () -> Unit = {}, onOpenStorage: () -> Unit = {}) {
     val context = LocalContext.current
     val running by ProviderRuntime.running.collectAsState()
     val engineState by ProviderEngine.state.collectAsState()
     val logLines by ProviderEngine.log.collectAsState()
 
     val binaryAvailable = remember { ProviderEngine.isBinaryAvailable(context) }
+    val onboarding = OnboardingStore(context)
+    val coordinatorUrl = onboarding.coordinatorUrl()
     // Read on every recomposition (a cheap preference lookup): a reset can clear it without changing the state.
-    val registered = EngineStore(context).isRegisteredFor(OnboardingStore(context).coordinatorUrl())
+    val registered = EngineStore(context).isRegisteredFor(coordinatorUrl)
 
     var notificationsGranted by remember { mutableStateOf(hasNotificationPermission(context)) }
     var batteryExempt by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
@@ -77,13 +91,32 @@ fun HomeScreen() {
     var zeroTierExempt by remember { mutableStateOf(checklist.zeroTierExempt()) }
     var oemDone by remember { mutableStateOf(checklist.oemSettingsDone()) }
     val oemGuide = remember { OemGuides.forManufacturer(Build.MANUFACTURER, Build.BRAND) }
-    val usesZeroTier = EngineConfigs.advertiseAddress(context, OnboardingStore(context).coordinatorUrl())?.isVpn ?: true
-    val missingSteps = StartReadiness.missingSteps(batteryExempt, zeroTierExempt, usesZeroTier)
+    // ZeroTier matters only when this phone actually reaches the coordinator over it.
+    val usesZeroTier = EngineConfigs.advertiseAddress(context, coordinatorUrl)?.isVpn == true &&
+        NetworkStatusReader.read(context).zeroTierInstalled
+
+    val limitStore = remember { LimitStore(context) }
+    var limitBytes by remember { mutableLongStateOf(limitStore.limitBytes()) }
+    val freeSpace = remember { StatFsFreeSpace(context.filesDir) }
+
+    // Is the coordinator answering? Checked on open and on "Check again".
+    var recheck by remember { mutableIntStateOf(0) }
+    var reachable by remember { mutableStateOf<Boolean?>(null) }
+    var reachProblem by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(coordinatorUrl, recheck) {
+        if (coordinatorUrl.isBlank()) return@LaunchedEffect
+        reachable = null
+        when (val r = CoordinatorCheck.check(coordinatorUrl)) {
+            is CheckResult.Reachable -> { reachable = true; reachProblem = null }
+            is CheckResult.Failed -> { reachable = false; reachProblem = r.reason }
+        }
+    }
 
     // The user may change battery or notification settings outside the app; re-read them on return.
     LifecycleResumeEffect(Unit) {
         batteryExempt = isIgnoringBatteryOptimizations(context)
         notificationsGranted = hasNotificationPermission(context)
+        limitBytes = limitStore.limitBytes()
         onPauseOrDispose { }
     }
 
@@ -98,6 +131,67 @@ fun HomeScreen() {
         ActivityResultContracts.StartActivityForResult(),
     ) { batteryExempt = isIgnoringBatteryOptimizations(context) }
 
+    val range = StorageLimitPolicy.range(freeSpace.freeBytes())
+    val registering = engineState is EngineState.Registering || engineState is EngineState.AwaitingOtp ||
+        engineState is EngineState.Verifying
+    val steps = SetupSteps.steps(
+        SetupInputs(
+            joined = coordinatorUrl.isNotBlank() && onboarding.phone().isNotBlank(),
+            coordinatorReachable = reachable,
+            coordinatorProblem = reachProblem,
+            storageSaved = limitBytes > 0L,
+            storageShortBy = (range as? LimitRange.NotEnoughSpace)?.let { formatGiB(it.requiredFreeBytes) },
+            appBatteryExempt = batteryExempt,
+            usesZeroTier = usesZeroTier,
+            zeroTierExempt = zeroTierExempt,
+            oemBrand = oemGuide?.brand,
+            oemDone = oemDone,
+            binaryAvailable = binaryAvailable,
+            registered = registered,
+            registering = registering,
+            running = running,
+            online = engineState == EngineState.Running,
+        ),
+    )
+    var setupMessage by remember { mutableStateOf<String?>(null) }
+
+    fun startProvider() {
+        if (!notificationsGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            ProviderController.start(context)
+        }
+    }
+
+    fun act(action: StepAction) {
+        setupMessage = null
+        when (action) {
+            StepAction.OPEN_NETWORK -> onOpenNetwork()
+            StepAction.RECHECK -> recheck++
+            StepAction.OPEN_STORAGE -> onOpenStorage()
+            StepAction.USE_DEFAULT_STORAGE -> {
+                val bytes = StorageLimitPolicy.clamp(BYTES_PER_GIB, range)
+                if (bytes > 0L) {
+                    limitStore.save(bytes)
+                    limitBytes = bytes
+                } else {
+                    onOpenStorage()
+                }
+            }
+            StepAction.BATTERY -> batteryLauncher.launch(
+                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}")),
+            )
+            StepAction.ZEROTIER -> openAppSettings(context, NetworkStatusReader.ZEROTIER_PACKAGE)
+            StepAction.OEM -> oemGuide?.let { openWebPage(context, it.url) }
+            StepAction.REGISTER -> when (val result = EngineConfigs.fromDevice(context, requireRegistered = false)) {
+                is ConfigResult.Missing -> setupMessage = result.reason
+                is ConfigResult.Ready -> ProviderEngine.startOnboarding(context, result.config)
+            }
+            StepAction.START -> startProvider()
+            StepAction.NONE -> Unit
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -105,7 +199,22 @@ fun HomeScreen() {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        ScreenTitle("Vyomanaut", "Provider node")
+        ScreenTitle("Vyomanaut", onboarding.networkName().ifBlank { "Provider node" })
+
+        SetupPanel(
+            steps = steps,
+            onAction = ::act,
+            onConfirm = { action ->
+                when (action) {
+                    StepAction.ZEROTIER -> { zeroTierExempt = true; checklist.setZeroTierExempt(true) }
+                    StepAction.OEM -> { oemDone = true; checklist.setOemSettingsDone(true) }
+                    else -> Unit
+                }
+            },
+            message = setupMessage,
+        )
+
+        RegistrationPanel(registered = registered, engineState = engineState)
 
         // The title follows what the provider is actually doing, not whether the service was started.
         PixelPanel(title = "Status: " + statusLabel(engineState)) {
@@ -125,31 +234,15 @@ fun HomeScreen() {
             }
             if (running) {
                 PixelButton(text = "Stop provider", onClick = { ProviderController.stop(context) }, color = PixelColors.PanelLight)
+            } else if (registered) {
+                PixelButton(text = "Start provider", enabled = binaryAvailable && batteryExempt, onClick = ::startProvider)
             } else {
-                PixelButton(
-                    text = "Start provider",
-                    enabled = binaryAvailable && registered && missingSteps.isEmpty(),
-                    onClick = {
-                        if (!notificationsGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        } else {
-                            ProviderController.start(context)
-                        }
-                    },
-                )
-                if (!binaryAvailable || !registered) {
-                    Text("Register this phone below before starting.", color = PixelColors.Muted)
-                }
-                missingSteps.forEach { Text(it, color = PixelColors.Gold) }
+                Text("Follow \"Get connected\" above.", color = PixelColors.Muted)
+            }
+            if (!notificationsGranted) {
+                Text("Notifications are off: the provider still runs, without a status notification.", color = PixelColors.Muted)
             }
         }
-
-        RegistrationPanel(
-            binaryAvailable = binaryAvailable,
-            registered = registered,
-            engineState = engineState,
-            checklistDone = missingSteps.isEmpty(),
-        )
 
         if (logLines.isNotEmpty()) {
             PixelPanel(title = "Provider output") {
@@ -166,125 +259,72 @@ fun HomeScreen() {
             }
         }
 
-        ReadinessPanel(
-            notificationsGranted = notificationsGranted,
-            appBatteryExempt = batteryExempt,
-            onRequestAppExemption = {
-                batteryLauncher.launch(
-                    Intent(
-                        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                        Uri.parse("package:${context.packageName}"),
-                    ),
-                )
-            },
-            zeroTierExempt = zeroTierExempt,
-            onZeroTierExemptChange = {
-                zeroTierExempt = it
-                checklist.setZeroTierExempt(it)
-            },
-            oemGuide = oemGuide,
-            oemDone = oemDone,
-            onOemDoneChange = {
-                oemDone = it
-                checklist.setOemSettingsDone(it)
-            },
-        )
-
         PixelPanel(title = "Network profile: demo") {
             Text("Erasure code RS(${DemoProfile.DATA_SHARDS},${DemoProfile.TOTAL_SHARDS}), minimum ${DemoProfile.MIN_ACTIVE_PROVIDERS} providers")
             Text("Audit period ${DemoProfile.AUDIT_PERIOD_MINUTES} min, departure after ${DemoProfile.DEPARTURE_THRESHOLD_MINUTES} min offline")
+            if (limitBytes > 0L) Text("You lend ${formatGiB(limitBytes)} (registered as ${ProviderArgs.storageGbFromLimit(limitBytes)} GB)")
             Text("Payments: see the Payments tab")
         }
     }
 }
 
+/** Code entry and reset. Starting registration is a step in "Get connected". */
 @Composable
-private fun RegistrationPanel(
-    binaryAvailable: Boolean,
-    registered: Boolean,
-    engineState: EngineState,
-    checklistDone: Boolean,
-) {
+private fun RegistrationPanel(registered: Boolean, engineState: EngineState) {
     val context = LocalContext.current
     var otp by remember { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
     var confirmReset by remember { mutableStateOf(false) }
 
-    PixelPanel(title = "Registration") {
-        val limitBytes = LimitStore(context).limitBytes()
-        if (ProviderArgs.storageGbFromLimit(limitBytes) < DemoProfile.COORDINATOR_MIN_DECLARED_GB) {
+    val content: (@Composable () -> Unit)? = when {
+        engineState is EngineState.Registering -> { { Text("Contacting the coordinator...") } }
+
+        engineState is EngineState.AwaitingOtp -> { {
+            Text("The coordinator sent a 6-digit code. Ask the host for it: it shows on their join desk.")
+            PixelTextField(
+                value = otp,
+                onValueChange = { otp = it.filter(Char::isDigit).take(OTP_DIGITS) },
+                label = "6-digit code",
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+            )
+            PixelButton(text = "Submit code", onClick = {
+                message = if (ProviderEngine.submitOtp(otp)) null else "The code must be exactly 6 digits."
+            })
+        } }
+
+        engineState is EngineState.Verifying -> { { Text("Verifying the code...") } }
+
+        engineState is EngineState.NeedsRegistration -> { {
             Text(
-                "Prototype note: the coordinator requires at least ${DemoProfile.COORDINATOR_MIN_DECLARED_GB} GB, " +
-                    "so this phone is registered as ${DemoProfile.COORDINATOR_MIN_DECLARED_GB} GB although you offer " +
-                    "${formatGiB(limitBytes)}. Keep test files small so the phone does not run out of the space you offered.",
-                color = PixelColors.Gold,
+                "Registering again deletes this phone's provider identity and stored shards, then runs " +
+                    "onboarding with a new 6-digit code.",
             )
-        }
-        when {
-            !binaryAvailable -> Text(
-                "The provider program is not bundled yet. Build it on your PC with " +
-                    "scripts/build_android_provider.ps1, then rebuild and run the app.",
-            )
+            PixelButton(text = "Register again", onClick = { ProviderEngine.resetRegistration(context) })
+        } }
 
-            engineState is EngineState.Registering -> Text("Contacting the coordinator...")
-
-            engineState is EngineState.AwaitingOtp -> {
-                Text("The coordinator sent a 6-digit code. Ask the host for it: it shows on their join desk.")
-                PixelTextField(
-                    value = otp,
-                    onValueChange = { otp = it.filter(Char::isDigit).take(OTP_DIGITS) },
-                    label = "6-digit code",
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                )
-                PixelButton(text = "Submit code", onClick = {
-                    message = if (ProviderEngine.submitOtp(otp)) null else "The code must be exactly 6 digits."
-                })
-            }
-
-            engineState is EngineState.Verifying -> Text("Verifying the code...")
-
-            engineState is EngineState.NeedsRegistration -> {
-                Text(
-                    "Registering again deletes this phone's provider identity and stored shards, then runs " +
-                        "onboarding with a new 6-digit code.",
-                )
-                PixelButton(text = "Register again", onClick = { ProviderEngine.resetRegistration(context) })
-            }
-
-            registered -> {
-                Text("This phone is registered with the coordinator.", color = PixelColors.Good)
-                // Two taps, because this wipes the provider identity and every stored shard.
-                PixelButton(
-                    text = if (confirmReset) "Tap again to delete and reset" else "Reset registration",
-                    color = if (confirmReset) PixelColors.Bad else PixelColors.PanelLight,
-                    onClick = {
-                        if (confirmReset) {
-                            confirmReset = false
-                            ProviderController.stop(context)
-                            ProviderEngine.resetRegistration(context)
-                        } else {
-                            confirmReset = true
-                        }
-                    },
-                )
-            }
-
-            else -> {
-                Text("Register once so the coordinator admits this phone. Make sure the Network and Storage tabs are set up first.")
-                // The provider starts right after registering, and the coordinator departs a phone that sends no
-                // heartbeat for 10 minutes, so the battery checklist must be done before registering, not after.
-                if (!checklistDone) {
-                    Text("Finish the \"Before you start\" checklist below first.", color = PixelColors.Gold)
-                }
-                PixelButton(text = "Register this phone", enabled = checklistDone, onClick = {
-                    message = null
-                    when (val result = EngineConfigs.fromDevice(context, requireRegistered = false)) {
-                        is ConfigResult.Missing -> message = result.reason
-                        is ConfigResult.Ready -> ProviderEngine.startOnboarding(context, result.config)
+        registered -> { {
+            Text("This phone is registered with the coordinator.", color = PixelColors.Good)
+            // Two taps, because this wipes the provider identity and every stored shard.
+            PixelButton(
+                text = if (confirmReset) "Tap again to delete and reset" else "Reset registration",
+                color = if (confirmReset) PixelColors.Bad else PixelColors.PanelLight,
+                onClick = {
+                    if (confirmReset) {
+                        confirmReset = false
+                        ProviderController.stop(context)
+                        ProviderEngine.resetRegistration(context)
+                    } else {
+                        confirmReset = true
                     }
-                })
-            }
-        }
+                },
+            )
+        } }
+
+        else -> null
+    }
+    if (content == null) return
+    PixelPanel(title = "Registration") {
+        content()
         message?.let { Text(it, color = PixelColors.Bad) }
     }
 }

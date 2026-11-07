@@ -44,7 +44,7 @@ object EngineConfigBuilder {
         if (limitGb < 1) {
             return ConfigResult.Missing("Save a storage limit of at least 1 GB on the Storage tab.")
         }
-        // Prototype workaround: the coordinator rejects less than COORDINATOR_MIN_DECLARED_GB.
+        // Declare what the phone really offers (the coordinator accepts 1 GB and up).
         val storageGb = maxOf(limitGb, DemoProfile.COORDINATOR_MIN_DECLARED_GB)
         val address = vpnAddresses.firstOrNull()
             ?: return ConfigResult.Missing(

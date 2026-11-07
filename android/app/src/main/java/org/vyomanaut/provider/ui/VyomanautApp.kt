@@ -61,7 +61,7 @@ fun VyomanautApp(pendingJoin: JoinLink? = null, onJoinHandled: () -> Unit = {}) 
             androidx.compose.runtime.key(joinCount) {
             Box(modifier = Modifier.padding(padding).fillMaxSize()) {
                 when (tab) {
-                    Tab.Home -> HomeScreen()
+                    Tab.Home -> HomeScreen(onOpenNetwork = { tab = Tab.Network }, onOpenStorage = { tab = Tab.Storage })
                     Tab.Payments -> PaymentsScreen()
                     Tab.Storage -> StorageScreen()
                     Tab.Network -> NetworkScreen()

@@ -13,16 +13,18 @@ object DemoProfile {
     const val DEPARTURE_THRESHOLD_MINUTES = 10
     const val DEFAULT_LISTEN_PORT = 30303
 
-    /** The provider may offer at most this share of the phone's currently free space. */
-    const val MAX_LIMIT_PERCENT_OF_FREE = 10
+    /**
+     * The provider may offer at most this share of the phone's currently free space. Was 10, which needed
+     * 10 GB free to offer the smallest limit; at 50 a phone with 2 GB free can join.
+     */
+    const val MAX_LIMIT_PERCENT_OF_FREE = 50
 
     /** Below this limit a phone is not worth admitting (1 GiB). */
     const val MIN_LIMIT_BYTES = 1L shl 30
 
     /**
-     * The coordinator rejects registrations that declare less than this many GB (API constant and
-     * database CHECK). PROTOTYPE WORKAROUND: a phone offering less is registered as this size.
-     * Remove once the coordinator accepts small providers.
+     * The smallest size the coordinator accepts (API check and database CHECK, migration 005). Older
+     * coordinators required 10; a phone is never registered as more than it offers.
      */
-    const val COORDINATOR_MIN_DECLARED_GB = 10
+    const val COORDINATOR_MIN_DECLARED_GB = 1
 }
