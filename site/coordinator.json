@@ -1,0 +1,4 @@
+{
+  "coordinator_url": "",
+  "note": "The host's public address. scripts/demo/site_pointer.sh fills this in from the running network; commit and push it to update the live page."
+}

@@ -255,6 +255,9 @@ func intentLink(in Info) string {
 func (s *server) infoJSON(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
+	// Public and read-only, so the static site (site/index.html, on another
+	// origin) may read it to show whether the network is up.
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	_ = json.NewEncoder(w).Encode(s.networkInfo(r))
 }
 

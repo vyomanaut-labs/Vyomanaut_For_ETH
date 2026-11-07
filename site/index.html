@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vyomanaut: join the live network</title>
+<meta name="description" content="Scan the QR code to join the live Vyomanaut demo network from your phone or laptop.">
+<style>
+:root{--bg:#070b1a;--card:#111833;--line:#25305a;--text:#e9ecff;--dim:#9aa3c7;--accent:#7cf2c8;--accent2:#8fa8ff;--warn:#ffcf70;--bad:#ff8a8a}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(1200px 600px at 70% -10%,#16204a 0,var(--bg) 60%);color:var(--text);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:1000px;margin:0 auto;padding:28px 20px 60px}
+a{color:var(--accent2)}
+.brand{letter-spacing:.14em;text-transform:uppercase;font-size:.8rem;color:var(--accent);font-weight:700}
+h1{font-size:clamp(1.9rem,5vw,3rem);line-height:1.1;margin:.3em 0 .2em}
+h2{font-size:1.25rem;margin:0 0 .6em}
+.lead{color:var(--dim);font-size:1.1rem;max-width:42em}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px;margin:22px 0}
+.live{display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:28px;align-items:center}
+.qr{background:#fff;border-radius:18px;padding:14px;aspect-ratio:1;display:grid;place-items:center}
+.qr img{width:100%;display:block;image-rendering:pixelated}
+.qr .none{color:#334;text-align:center;font-size:.95rem;padding:10px}
+.pill{display:inline-block;border-radius:99px;padding:3px 12px;font-size:.85rem;font-weight:600}
+.pill.on{background:#123d33;color:var(--accent)}
+.pill.off{background:#3a2424;color:var(--bad)}
+.pill.wait{background:#2a3566;color:var(--text)}
+.mono{font-family:ui-monospace,Consolas,monospace;font-size:.9rem;word-break:break-all;color:var(--dim)}
+.btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.btn{display:inline-block;background:var(--accent);color:#04121a;font-weight:700;text-decoration:none;border-radius:12px;padding:11px 18px}
+.btn.alt{background:transparent;color:var(--text);border:1px solid var(--line)}
+.btn[aria-disabled=true]{opacity:.4;pointer-events:none}
+.note{color:var(--warn);font-size:.92rem;margin-top:10px}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:0;padding:0;list-style:none;counter-reset:s}
+.steps li{counter-increment:s;background:#0c1330;border:1px solid var(--line);border-radius:14px;padding:16px}
+.steps li::before{content:counter(s);display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--accent);color:#04121a;font-weight:800;margin-bottom:8px}
+.links{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+.links a{display:block;border:1px solid var(--line);border-radius:12px;padding:12px 14px;text-decoration:none;color:var(--text)}
+.links a:hover{border-color:var(--accent)}
+.links b{display:block;color:var(--accent2)}
+.links span{color:var(--dim);font-size:.85rem}
+footer{color:var(--dim);font-size:.9rem;margin-top:30px}
+@media (max-width:640px){.live{grid-template-columns:1fr}.qr{max-width:300px}}
+</style></head>
+<body><main>
+<div class="brand">Vyomanaut</div>
+<h1>Join the live network</h1>
+<p class="lead">Cloud storage on ordinary phones and laptops. Files are locked on the owner's device and split into pieces, so no single device ever sees them, and providers are paid in USDT that survives the operator.</p>
+
+<section class="card live" aria-live="polite">
+  <div class="qr"><img id="qr" alt="QR code to join the Vyomanaut network" hidden><div id="qr-none" class="none">Looking for the live network…</div></div>
+  <div>
+    <h2 id="name">Live demo network</h2>
+    <p><span id="status" class="pill wait">checking…</span> <span id="detail" class="mono"></span></p>
+    <p class="mono" id="host"></p>
+    <div class="btns">
+      <a id="join" class="btn" aria-disabled="true" href="#">Open the join page</a>
+      <a id="app" class="btn alt" aria-disabled="true" href="#">Download the Android app</a>
+    </div>
+    <p id="msg" class="note" hidden></p>
+  </div>
+</section>
+
+<section class="card">
+  <h2>How joining works</h2>
+  <ol class="steps">
+    <li><b>Scan the code.</b><br>Point a phone camera at the QR. A laptop opens the join page and shows one line to paste.</li>
+    <li><b>Install and open.</b><br>The page downloads the app, then "Open in the app" fills in the network for you.</li>
+    <li><b>Type the code.</b><br>The host reads out a 6-digit code from their join desk. Enter it, and you are online.</li>
+  </ol>
+</section>
+
+<section class="card">
+  <h2>What runs on chain</h2>
+  <div class="links">
+    <a href="https://explorer.testnet.whitechain.io/address/0xBcE841C78c6c40C551fc223Ba9415D4751Af5958" target="_blank" rel="noopener"><b>Escrow contract</b><span>Whitechain Sepolia: deposits, payout periods, claims, refunds</span></a>
+    <a href="https://explorer.testnet.whitechain.io/address/0x1b2b623ecA0A7899c6a24eaf401a99d2434FDB3d" target="_blank" rel="noopener"><b>Audit anchor</b><span>Whitechain Sepolia: one Merkle root of audit receipts per epoch</span></a>
+    <a href="https://rabdi.explorer.arkiv.network/address/0x1044E36804C0cED0243529dc6Dc865a3E0b727B9" target="_blank" rel="noopener"><b>Arkiv writer wallet</b><span>Rabdi testnet: every audit result, public and checkable</span></a>
+  </div>
+</section>
+
+<footer>
+  Open source: <a href="https://github.com/vyomanaut-labs/Vyomanaut_For_ETH" target="_blank" rel="noopener">github.com/vyomanaut-labs/Vyomanaut_For_ETH</a>.
+  Anyone can run their own network from one laptop. Test networks only; the contracts are unaudited.
+</footer>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Which coordinator is live? The host publishes it in coordinator.json (it changes whenever the
+  // host restarts the tunnel). A ?c= link overrides it, but only for a free Cloudflare tunnel or
+  // localhost, so nobody can make this page show a QR for someone else's server.
+  var TUNNEL = /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/;
+  var LOCAL = /^http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?$/;
+  var ORIGIN = /^https?:\/\/[A-Za-z0-9.\-]+(:\d{1,5})?$/;
+  var POLL_MS = 30000, ASK_MS = 6000;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var current = null;
+
+  function clean(u) { return String(u || "").trim().replace(/\/+$/, ""); }
+
+  function fromQuery() {
+    var c = new URLSearchParams(location.search).get("c");
+    if (!c) return { url: null };
+    c = clean(c);
+    return TUNNEL.test(c) || LOCAL.test(c) ? { url: c } : { url: null, rejected: true };
+  }
+
+  function fromFile() {
+    return fetch("coordinator.json?t=" + Date.now(), { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : {}; })
+      .then(function (j) { var u = clean(j && j.coordinator_url); return ORIGIN.test(u) ? u : null; })
+      .catch(function () { return null; });
+  }
+
+  function resolve() {
+    var q = fromQuery();
+    if (q.url) return Promise.resolve({ url: q.url });
+    return fromFile().then(function (u) { return { url: u, rejected: q.rejected }; });
+  }
+
+  function say(msg) { var m = $("msg"); m.hidden = !msg; m.textContent = msg || ""; }
+  function pill(kind, text) { var s = $("status"); s.className = "pill " + kind; s.textContent = text; }
+  function setLink(a, href) { if (href) { a.href = href; a.removeAttribute("aria-disabled"); } else { a.href = "#"; a.setAttribute("aria-disabled", "true"); } }
+
+  function offline(why, rejected) {
+    current = null;
+    $("qr").hidden = true; $("qr").removeAttribute("src");
+    $("qr-none").hidden = false; $("qr-none").textContent = "No live network right now.";
+    $("name").textContent = "Live demo network";
+    $("host").textContent = "";
+    pill("off", "offline"); $("detail").textContent = why || "";
+    setLink($("join"), null); setLink($("app"), null);
+    say(rejected ? "That ?c= address was ignored: only free Cloudflare tunnels and localhost are accepted in a link."
+                 : "The host has not published a network yet. You can run your own from one laptop: see the GitHub link below.");
+  }
+
+  function show(url) {
+    var changed = url !== current;
+    current = url;
+    $("host").textContent = url;
+    setLink($("join"), url + "/join");
+    setLink($("app"), url + "/join/download/vyomanaut-provider-android.apk");
+    if (changed) {
+      $("qr-none").hidden = false; $("qr-none").textContent = "Loading the code…";
+      $("qr").hidden = true;
+      $("qr").onload = function () { $("qr").hidden = false; $("qr-none").hidden = true; };
+      $("qr").onerror = function () { $("qr").hidden = true; $("qr-none").hidden = false; $("qr-none").textContent = "The network did not answer. The host may have stopped it."; };
+      $("qr").src = url + "/join/qr.png?t=" + Date.now();
+    }
+    if (location.protocol === "https:" && url.indexOf("http:") === 0) {
+      say("This network is on a local address, which a secure page cannot open. Ask the host to start it with tunnels.");
+    } else { say(""); }
+    var ctl = new AbortController(), t = setTimeout(function () { ctl.abort(); }, ASK_MS);
+    fetch(url + "/api/v1/network/info", { cache: "no-store", signal: ctl.signal })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (info) {
+        if (url !== current) return;
+        $("name").textContent = String(info.network_name || "Live demo network");
+        pill("on", "online");
+        $("detail").textContent = (info.relay_addrs && info.relay_addrs.length ? "relay ready" : "no relay") + " · " + String(info.mode || "demo") + " mode";
+      })
+      .catch(function () { if (url === current) { pill("off", "not answering"); $("detail").textContent = "the host may have stopped it"; } })
+      .then(function () { clearTimeout(t); });
+  }
+
+  function tick() {
+    resolve().then(function (r) { if (r.url) show(r.url); else offline("", r.rejected); });
+  }
+  tick();
+  setInterval(tick, POLL_MS);
+})();
+</script>
+</body></html>

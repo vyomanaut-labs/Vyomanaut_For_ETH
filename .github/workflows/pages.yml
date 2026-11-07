@@ -1,0 +1,38 @@
+name: Pages
+
+# Publishes site/ (the live-network QR page) to GitHub Pages.
+# One-time setup by a repo admin: Settings > Pages > Source = "GitHub Actions".
+# The page then lives at https://vyomanaut-labs.github.io/Vyomanaut_For_ETH/.
+# Changing site/coordinator.json (see scripts/demo/site_pointer.sh) redeploys it.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

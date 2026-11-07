@@ -174,3 +174,17 @@ func TestDeskClosedWithoutKey(t *testing.T) {
 		t.Fatalf("empty key opened the desk: %d", code)
 	}
 }
+
+func TestNetworkInfoCanBeReadFromAnotherSite(t *testing.T) {
+	srv := newTestServer(t, Config{})
+	_, _, hdr := get(t, srv.URL+"/api/v1/network/info")
+	if hdr.Get("Access-Control-Allow-Origin") != "*" {
+		t.Fatalf("CORS header = %q", hdr.Get("Access-Control-Allow-Origin"))
+	}
+	// Nothing private may be opened to other sites.
+	for _, path := range []string{"/join/desk/requests", "/join/desk/owner", "/join/desk/chain"} {
+		if _, _, h := get(t, srv.URL+path); h.Get("Access-Control-Allow-Origin") != "" {
+			t.Errorf("%s must not send a CORS header", path)
+		}
+	}
+}
