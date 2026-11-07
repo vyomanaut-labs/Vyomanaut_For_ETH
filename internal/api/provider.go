@@ -183,7 +183,7 @@ var (
 )
 
 const (
-	minDeclaredStorageGB = 10
+	minDeclaredStorageGB = 1 // migration 005; was 10
 	maxDeclaredStorageGB = 100000
 	minMultiaddrs        = 1
 	maxMultiaddrs        = 8

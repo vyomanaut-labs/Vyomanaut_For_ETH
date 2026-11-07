@@ -282,7 +282,8 @@ func TestProviderEarningsRejectsMissingStorageGB(t *testing.T) {
 func TestProviderEarningsRejectsOutOfRangeStorageGB(t *testing.T) {
 	h := NewProviderEarningsEstimateHandler(config.DemoProfile)
 
-	for _, gb := range []string{"9", "100001", "not-a-number"} {
+	// The floor is 1 GB (migration 005).
+	for _, gb := range []string{"0", "100001", "not-a-number"} {
 		t.Run(gb, func(t *testing.T) {
 			req := httptest.NewRequest("GET", "/api/v1/pricing/provider-estimate?storage_gb="+gb+"&uptime_target_pct=95", nil)
 			rec := httptest.NewRecorder()

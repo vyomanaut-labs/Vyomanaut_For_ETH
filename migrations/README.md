@@ -64,7 +64,8 @@ number up front instead of racing for "the next one":
 | 002 | chain / payments feature |
 | 003 | Arkiv mirror feature |
 | 004 | chain / payments feature (on-chain refunds) |
-| 005 onward | Arkiv mirror feature (next free number) |
+| 005 | open network: providers may declare 1 GB |
+| 006 onward | next free number |
 
 Rules for a new table: create it in your own file, `GRANT` only what
 `vyomanaut_app` needs, never touch `audit_receipts` or `escrow_events` (their

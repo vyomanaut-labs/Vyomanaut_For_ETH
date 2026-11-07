@@ -31,9 +31,9 @@
       $ok = $Phone -match '^\+[0-9]{8,15}$'
       if (-not $ok) { Write-Host '  Start with + and your country code, then the number.' }
     } until ($ok)
-    $Gb = (Read-Host 'How many GB of this disk to lend (at least 10) [10]').Trim()
+    $Gb = (Read-Host 'How many GB of this disk to lend (at least 1) [10]').Trim()
     if ($Gb -notmatch '^[0-9]+$') { $Gb = '10' }
-    if ([int]$Gb -lt 10) { Write-Host '  The network needs at least 10 GB; using 10.'; $Gb = '10' }
+    if ([int]$Gb -lt 1) { Write-Host '  The network needs at least 1 GB; using 1.'; $Gb = '1' }
     Say 'Now ask the host for your 6-digit code. It shows on their join desk.'
     & $Bin onboard "--microservice-url=$Coord" "--phone=$Phone" "--storage-gb=$Gb" "--data-dir=$Dir"
     if ($LASTEXITCODE -ne 0) { throw 'Registration did not finish. Run the same line again to retry.' }

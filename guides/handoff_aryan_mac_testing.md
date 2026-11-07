@@ -99,7 +99,7 @@ tunnels. Write the result in the last column.
 | 6 | Phone join | Enter phone, Join, then Register | Number appears on the desk with a code, state "waiting" | |
 | 7 | Code | Type the desk code in the app | App ONLINE; desk "joined"; `operator watch` lists the phone | |
 | 8 | Relay over bore | Provider log in the app | Relay slot reserved via `bore.pub` (first test of this) | |
-| 9 | Laptop join | On another laptop, run the line from the join page (Windows `irm … \| iex`, Mac/Linux `curl … \| sh`) | Asks phone + GB (10 or more), takes the desk code, provider runs | |
+| 9 | Laptop join | On another laptop, run the line from the join page (Windows `irm … \| iex`, Mac/Linux `curl … \| sh`) | Asks phone + GB (1 or more), takes the desk code, provider runs | |
 | 10 | Payments tab | Open Payments in the app (only if chains are on) | Loads from the tunnelled chain API | |
 | 11 | Stop | `scripts/demo/host.sh --stop` | All processes and tunnels gone | |
 
@@ -112,7 +112,7 @@ tunnels. Write the result in the last column.
 | Join page won't load on 4G | Cloudflare tunnel failed or changed | Take the new URL from the `host.sh` summary; reopen the QR screen |
 | "Open in the app" does nothing | Old app installed | Uninstall, install the APK from the join page |
 | App: name lookup or certificate error | Old app without the fix | Same as above |
-| Laptop join refused | Storage under 10 GB | Enter 10 or more |
+| Laptop join refused | Storage under 1 GB | Enter 1 or more |
 | Code rejected | Older than 10 minutes, or already used | Press Register again; read the new code |
 | Desk asks for a password | Opened without the key link | Use the tab `host.sh` opened, or `ADMIN_API_KEY` from `/tmp/vyomanaut-demo/env` |
 

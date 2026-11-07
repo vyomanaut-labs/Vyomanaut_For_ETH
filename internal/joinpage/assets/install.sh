@@ -47,10 +47,10 @@ if [ ! -f "$DIR/registration.json" ]; then
       *) echo "  Start with + and your country code, then the number." ;;
     esac
   done
-  printf 'How many GB of this disk to lend (at least 10) [10]: '
+  printf 'How many GB of this disk to lend (at least 1) [10]: '
   read -r GB </dev/tty
   case "$GB" in '' | *[!0-9]*) GB=10 ;; esac
-  [ "$GB" -ge 10 ] || { echo "  The network needs at least 10 GB; using 10."; GB=10; }
+  [ "$GB" -ge 1 ] || { echo "  The network needs at least 1 GB; using 1."; GB=1; }
   say "Now ask the host for your 6-digit code. It shows on their join desk."
   "$BIN" onboard --microservice-url="$COORD" --phone="$PHONE" --storage-gb="$GB" --data-dir="$DIR" </dev/tty
 fi
