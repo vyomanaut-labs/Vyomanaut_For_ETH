@@ -22,7 +22,7 @@ COPY scripts/release scripts/release
 # a compile at start-up.
 ENV VYOMANAUT_DEMO_STATE_DIR=/var/vyomanaut
 RUN set -eux; \
-    eval "$(scripts/release/purego_env.sh)"; \
+    eval "$(bash scripts/release/purego_env.sh)"; \
     mkdir -p /var/vyomanaut/bin; \
     for c in microservice provider operator client relay; do \
       go build -o "/var/vyomanaut/bin/$c" "./cmd/$c"; \

@@ -62,7 +62,7 @@ if [[ -n "${CHAIN_PRIVATE_KEY:-}" || -n "${ARKIV_PRIVATE_KEY:-}" ]]; then
   if [[ -n "${CHAIN_PRIVATE_KEY:-}" ]]; then
     printf '%s\n' "$CHAIN_PRIVATE_KEY" >/run/vkeys/deployer.key
     export VYOMANAUT_CHAIN_PRIVATE_KEY_FILE=/run/vkeys/deployer.key
-    eval "$(scripts/demo/chain_env.sh)"
+    eval "$(bash scripts/demo/chain_env.sh)"
     log "Whitechain settlement and anchoring are on"
   fi
   if [[ -n "${ARKIV_PRIVATE_KEY:-}" ]]; then
@@ -72,7 +72,7 @@ if [[ -n "${CHAIN_PRIVATE_KEY:-}" || -n "${ARKIV_PRIVATE_KEY:-}" ]]; then
       printf '%s\n' "$ARKIV_ACCESS_KEY" >/run/vkeys/arkiv_access.key
       export VYOMANAUT_ARKIV_ACCESS_KEY_FILE=/run/vkeys/arkiv_access.key
     fi
-    eval "$(scripts/demo/arkiv_env.sh)"
+    eval "$(bash scripts/demo/arkiv_env.sh)"
     log "the Arkiv mirror is on"
   fi
   umask 022
@@ -91,7 +91,7 @@ export PGHOST PGPORT PGDATABASE=vyomanaut_demo
 
 log "starting the coordinator and $PROVIDERS local providers (about 1 to 2 minutes)"
 # up.sh prints the admin key; keep it out of Railway's log view.
-scripts/demo/up.sh --providers "$PROVIDERS" --port "$PORT" --advertise-host 127.0.0.1 \
+bash scripts/demo/up.sh --providers "$PROVIDERS" --port "$PORT" --advertise-host 127.0.0.1 \
   | sed -E 's/(ADMIN_API_KEY +=) +[0-9a-f]+/\1 (hidden)/'
 
 # shellcheck disable=SC1091
