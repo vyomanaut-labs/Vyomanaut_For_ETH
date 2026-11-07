@@ -238,6 +238,14 @@ providers, then opens two browser tabs:
 
 Your network is invite-only: nobody gets in without a code from your desk.
 
+**A public page for your QR (optional).** `site/` is a static page, published to GitHub Pages by
+`.github/workflows/pages.yml`, that shows the live network's QR code and whether it is online. A
+free tunnel's address changes on every start, so after `host.sh` run `scripts/demo/site_pointer.sh`,
+then commit and push `site/coordinator.json`: the page updates in about a minute. For an instant
+preview, open the page with `?c=<your tunnel address>` (only free Cloudflare tunnels and
+localhost are accepted in a link). One-time setup for the repo admin: Settings > Pages > Source =
+GitHub Actions.
+
 | Option | What it does |
 | --- | --- |
 | `-Local` / `--local` | No tunnels. Only devices on your Wi-Fi can join. Use it if the venue blocks tunnels. |

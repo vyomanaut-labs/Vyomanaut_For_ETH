@@ -1,0 +1,24 @@
+# deployments/server/docker-compose.yml
+#
+# Postgres for a PUBLIC server (scripts/demo/host.sh --server). It is the dev
+# database with one change that matters: it listens on 127.0.0.1 only.
+# deployments/dev/docker-compose.yml publishes 5432 on every interface, and
+# Docker's published ports bypass the host firewall, so on a public machine
+# that would put a database with the password "devpass" on the internet.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: vyomanaut_dev
+      POSTGRES_USER: vyomanaut_migrator
+      POSTGRES_PASSWORD: devpass
+    ports:
+      - "127.0.0.1:5432:5432"
+    restart: unless-stopped
+    volumes:
+      - ../dev/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vyomanaut_migrator"]
+      interval: 5s
+      timeout: 5s
+      retries: 5

@@ -8,6 +8,11 @@
 # with local providers (up.sh), then opens the QR screen and your join desk.
 #
 #   --local       no tunnels: only devices on this Wi-Fi can join
+#   --server IP   run as a PUBLIC SERVER (a cloud VM): no tunnels, IP is this machine's
+#                 public address. Join page at http://IP:8080 and relay at IP:30300.
+#                 Open those two ports (and 8090 with chains). See guides/deploy_server.md.
+#   --domain NAME with --server: the coordinator's https name (scripts/deploy/server_setup.sh
+#                 puts a Caddy proxy in front). Join page at https://NAME.
 #   --chain-api   also give the chain API (port 8090) a public address
 #   --providers N local providers to start (default 7)
 #   --advertise-host IP  this machine's address for its own providers (default: autodetect)
@@ -30,6 +35,7 @@ LOG_DIR="$HOST_DIR/logs"
 PID_FILE="$HOST_DIR/pids"
 
 ADVERTISE_HOST=""; NAME="Vyomanaut network"; PROVIDERS=7; LOCAL=0; CHAIN=0; STOP=0; PORT=8080; RELAY_PORT=30300
+SERVER_IP=""; DOMAIN=
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --name) NAME="$2"; shift 2 ;;
@@ -37,6 +43,8 @@ while [[ $# -gt 0 ]]; do
     --local) LOCAL=1; shift ;;
     --advertise-host) ADVERTISE_HOST="$2"; shift 2 ;;
     --chain-api) CHAIN=1; shift ;;
+    --server) SERVER_IP="$2"; shift 2 ;;
+    --domain) DOMAIN="$2"; shift 2 ;;
     --stop) STOP=1; shift ;;
     -h | --help) sed -n 2,20p "$0"; exit 0 ;;
     *) echo "unknown option $1" >&2; exit 2 ;;
@@ -61,7 +69,8 @@ mkdir -p "$LOG_DIR"
 
 start_bg() { # log-name, command...
   local log="$LOG_DIR/$1"; shift
-  "$@" >"$log" 2>&1 &
+  # nohup: a server's processes must outlive the SSH session that started them.
+  nohup "$@" >"$log" 2>&1 </dev/null &
   echo $! >>"$PID_FILE"
   echo "$log"
 }
@@ -78,9 +87,17 @@ need go "See README 4.1."
 need docker "See README 4.1."
 need psql "See README 4.1."
 docker info >/dev/null 2>&1 || fail "Docker is not running."
+[[ -n "$DOMAIN" && -z "$SERVER_IP" ]] && fail "--domain needs --server <public IP>."
+if [[ -n "$SERVER_IP" ]]; then
+  [[ "$SERVER_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "--server takes this machine's public IPv4 address, not '$SERVER_IP'."
+  [[ -z "$DOMAIN" || "$DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] || fail "--domain '$DOMAIN' is not a plain host name."
+fi
 
+# A public server must keep Postgres private (see that file); everywhere else the dev compose is fine.
+COMPOSE=deployments/dev/docker-compose.yml
+[[ -n "$SERVER_IP" ]] && COMPOSE=deployments/server/docker-compose.yml
 say "Starting Postgres in Docker"
-docker compose -f deployments/dev/docker-compose.yml up -d --wait postgres
+docker compose -f "$COMPOSE" up -d --wait postgres
 
 say "Starting the relay on port $RELAY_PORT"
 if [[ "${CGO_LDFLAGS:-}" != *rocksdb* ]]; then eval "$(scripts/release/purego_env.sh)"; fi
@@ -95,7 +112,17 @@ fi
 LAN_IP="${ADVERTISE_HOST:-${LAN_IP:-127.0.0.1}}"
 unset VYOMANAUT_PUBLIC_URL VYOMANAUT_PUBLIC_RELAY VYOMANAUT_PUBLIC_CHAIN_API
 
-if [[ $LOCAL -eq 1 ]]; then
+if [[ -n "$SERVER_IP" ]]; then
+  # A public server: the address guests use is fixed, so no tunnels. This machine's own providers
+  # still use its private address (autodetected above) and stay direct.
+  if [[ -n "$DOMAIN" ]]; then PUBLIC_URL="https://$DOMAIN"; else PUBLIC_URL="http://$SERVER_IP:$PORT"; fi
+  PUBLIC_RELAY="$SERVER_IP:$RELAY_PORT"
+  export VYOMANAUT_PUBLIC_URL="$PUBLIC_URL" VYOMANAUT_PUBLIC_RELAY="$PUBLIC_RELAY"
+  unset VYOMANAUT_RELAY_ADDRS
+  if [[ $CHAIN -eq 1 || -n "${VYOMANAUT_CHAIN_ENABLED:-}" ]]; then
+    export VYOMANAUT_PUBLIC_CHAIN_API="http://$SERVER_IP:8090"
+  fi
+elif [[ $LOCAL -eq 1 ]]; then
   PUBLIC_URL="http://$LAN_IP:$PORT"
   PUBLIC_RELAY="$LAN_IP:$RELAY_PORT"
 else
@@ -140,6 +167,8 @@ ${VYOMANAUT_PUBLIC_CHAIN_API:+  Chain API:       $VYOMANAUT_PUBLIC_CHAIN_API
   Phones:   scan the QR, tap Download, then Open in the app.
   Laptops:  open $PUBLIC_URL/join and paste the one line it shows.
   Codes:    appear on your join desk; read them out.
+  Public page (optional): scripts/demo/site_pointer.sh, then commit and push site/coordinator.json
+                          so https://vyomanaut-labs.github.io/Vyomanaut_For_ETH/ shows this network's QR.
 
   Admin key: $ADMIN_API_KEY
   Stop everything: scripts/demo/host.sh --stop
