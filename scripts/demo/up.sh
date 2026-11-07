@@ -163,14 +163,24 @@ psql -v ON_ERROR_STOP=1 -h "$PGHOST" -p "$PGPORT" -U "$PGMIGRATORUSER" -d "$PGDA
    ALTER ROLE vyomanaut_gc  WITH PASSWORD '$PGAPPPASSWORD';"
 
 # ── build fresh binaries — never a stale prior run's copy ─────────────────
-log "building cmd/microservice, cmd/provider, cmd/operator, cmd/client"
-go build -o "$BIN_DIR/microservice" ./cmd/microservice/
-go build -o "$BIN_DIR/provider" ./cmd/provider/
-go build -o "$BIN_DIR/operator" ./cmd/operator/
-go build -o "$BIN_DIR/client" ./cmd/client/
+# VYOMANAUT_SKIP_BUILD=1 uses the binaries already in $BIN_DIR (a container image builds them once,
+# deployments/railway/Dockerfile). A container with little memory cannot afford a Go build at start.
+if [[ "${VYOMANAUT_SKIP_BUILD:-}" == "1" ]]; then
+  for b in microservice provider operator client; do
+    [[ -x "$BIN_DIR/$b" ]] || { echo "[up.sh] VYOMANAUT_SKIP_BUILD=1 but $BIN_DIR/$b is missing" >&2; exit 1; }
+  done
+  log "using the prebuilt binaries in $BIN_DIR"
+else
+  log "building cmd/microservice, cmd/provider, cmd/operator, cmd/client"
+  go build -o "$BIN_DIR/microservice" ./cmd/microservice/
+  go build -o "$BIN_DIR/provider" ./cmd/provider/
+  go build -o "$BIN_DIR/operator" ./cmd/operator/
+  go build -o "$BIN_DIR/client" ./cmd/client/
+fi
 
 # ── start the microservice ─────────────────────────────────────────────────
-ADMIN_API_KEY="$(openssl rand -hex 32)"
+# VYOMANAUT_DEMO_ADMIN_KEY (64 hex characters) keeps the same admin key across restarts.
+ADMIN_API_KEY="${VYOMANAUT_DEMO_ADMIN_KEY:-$(openssl rand -hex 32)}"
 SIGNING_SEED="$(openssl rand -hex 32)"
 CLUSTER_SEED="$(openssl rand -base64 32)"
 OTP_LOG="$STATE_DIR/otp.log"

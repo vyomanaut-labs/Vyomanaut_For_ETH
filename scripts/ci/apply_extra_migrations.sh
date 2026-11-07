@@ -22,7 +22,8 @@
 # here makes that clash loud instead of letting one file silently apply first.
 set -euo pipefail
 
-REPO_ROOT="$(git rev-parse --show-toplevel)"
+# Not in a git checkout (a container image has no .git)? Use this script's own location.
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 shopt -s nullglob
 
 # Pass 1: validate before touching the database. 001 is exempt from the

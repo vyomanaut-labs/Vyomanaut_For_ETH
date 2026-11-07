@@ -246,6 +246,10 @@ preview, open the page with `?c=<your tunnel address>` (only free Cloudflare tun
 localhost are accepted in a link). One-time setup for the repo admin: Settings > Pages > Source =
 GitHub Actions.
 
+**Hosting without tunnels.** Where tunnels are not allowed, run the coordinator on a real server:
+[`guides/deploy_server.md`](guides/deploy_server.md) (any cloud VM, `host.sh --server`) or
+[`guides/deploy_railway.md`](guides/deploy_railway.md) (Railway's free trial, no card needed).
+
 | Option | What it does |
 | --- | --- |
 | `-Local` / `--local` | No tunnels. Only devices on your Wi-Fi can join. Use it if the venue blocks tunnels. |

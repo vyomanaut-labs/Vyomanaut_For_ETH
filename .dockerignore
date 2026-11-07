@@ -1,0 +1,9 @@
+.git
+.github
+android
+dist
+Claude outputs
+site
+docs
+*.apk
+**/node_modules

@@ -229,9 +229,41 @@ func (o *Owner) register(ctx context.Context, phone string) error {
 	o.mu.Lock()
 	o.st = st
 	o.mu.Unlock()
-	// A fresh owner has no credit; give it some so the first upload works.
-	_ = o.Deposit(ctx)
+	// A fresh owner has no credit; give it some so the first upload works. The ledger
+	// credits a deposit a little later (up to about a minute), so wait for it: otherwise the
+	// first upload fails with "not enough credit".
+	if err := o.Deposit(ctx); err == nil {
+		o.waitForCredit(ctx)
+	}
 	return nil
+}
+
+// creditWait is how long Setup waits for the starting credit to appear. It stays under the
+// desk's own request timeout; if the credit is slower, the desk shows it when it lands.
+const creditWait = 40 * time.Second
+
+// waitForCredit polls the balance until some credit is available, or creditWait passes.
+func (o *Owner) waitForCredit(ctx context.Context) {
+	st, _, _, err := o.keys()
+	if err != nil {
+		return
+	}
+	token, err := o.token(ctx)
+	if err != nil {
+		return
+	}
+	m := manage.NewManager(o.baseURL, token, o.http)
+	deadline := time.Now().Add(creditWait)
+	for time.Now().Before(deadline) {
+		if _, _, avail, err := m.Balance(ctx, st.OwnerID); err == nil && avail > 0 {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(2 * time.Second):
+		}
+	}
 }
 
 // login gets a new token for the saved owner.

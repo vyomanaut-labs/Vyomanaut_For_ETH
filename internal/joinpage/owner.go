@@ -32,6 +32,9 @@ var _ DeskOwner = (*deskowner.Owner)(nil)
 // background, and not retrieve, which fetches shards).
 const ownerTimeout = 45 * time.Second
 
+// setupTimeout bounds the one-off owner setup, which waits for the starting credit.
+const setupTimeout = 90 * time.Second
+
 const retrieveTimeout = 5 * time.Minute
 
 func (s *server) adminOK(w http.ResponseWriter, r *http.Request) bool {
@@ -96,7 +99,8 @@ func (s *server) ownerSetup(w http.ResponseWriter, r *http.Request, o DeskOwner)
 		// Hide the codes this setup is about to send, before they are sent.
 		s.cfg.Desk.HidePhone(normalizePhone(body.Phone))
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), ownerTimeout)
+	// Setup registers, takes a code from the desk and waits for the starting credit to land.
+	ctx, cancel := context.WithTimeout(r.Context(), setupTimeout)
 	defer cancel()
 	if err := o.Setup(ctx, body.Phone); err != nil {
 		status := http.StatusBadRequest
