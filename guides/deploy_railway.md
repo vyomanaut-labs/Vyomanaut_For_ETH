@@ -23,7 +23,7 @@ Railway's free trial needs no card: a one-time $5 credit for up to 30 days, 1 GB
 
 1. <https://railway.com> > sign in with GitHub > **New Project** > **Deploy PostgreSQL**.
 2. In the same project: **New** > **GitHub Repo** > pick `Vyomanaut_For_ETH`, branch `main`.
-   Railway finds `railway.json` and builds `deployments/railway/Dockerfile` (a few minutes).
+   Railway finds `railway.json` and builds the `Dockerfile` in the repo root (a few minutes).
    The first deploy will stop with a message about a missing domain. That is expected.
 
 ## 2. Variables of the app service (Variables tab)
@@ -90,7 +90,7 @@ network.
 | --- | --- |
 | `No public domain yet` or `No TCP proxy yet` | Do step 3 (Settings > Networking), then **Redeploy**. Expected on the first try. |
 | `Cannot reach Postgres` | Re-check the four `PG...` variables in step 2. The database service must be named exactly `Postgres`. |
-| The build cannot find a Dockerfile | In **Settings > Build**, set the Dockerfile path to `deployments/railway/Dockerfile`. |
+| The build cannot find a Dockerfile | In **Settings > Build**, set the Dockerfile path to `Dockerfile`. |
 | `Create container` fails with "The executable `npm` could not be found" | A wrong start command is saved in the dashboard. In **Settings > Deploy**, clear **Custom Start Command** (`railway.json` already sets the right one: `bash deployments/railway/start.sh`), then redeploy. |
 | `Permission denied` on a `.sh` file during the build | A script lost its runnable flag in git (it happens when it is committed from Windows). Run `git update-index --chmod=+x <file>` and commit. |
 

@@ -164,7 +164,7 @@ psql -v ON_ERROR_STOP=1 -h "$PGHOST" -p "$PGPORT" -U "$PGMIGRATORUSER" -d "$PGDA
 
 # ── build fresh binaries — never a stale prior run's copy ─────────────────
 # VYOMANAUT_SKIP_BUILD=1 uses the binaries already in $BIN_DIR (a container image builds them once,
-# deployments/railway/Dockerfile). A container with little memory cannot afford a Go build at start.
+# the root Dockerfile). A container with little memory cannot afford a Go build at start.
 if [[ "${VYOMANAUT_SKIP_BUILD:-}" == "1" ]]; then
   for b in microservice provider operator client; do
     [[ -x "$BIN_DIR/$b" ]] || { echo "[up.sh] VYOMANAUT_SKIP_BUILD=1 but $BIN_DIR/$b is missing" >&2; exit 1; }

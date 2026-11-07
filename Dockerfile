@@ -1,4 +1,4 @@
-# deployments/railway/Dockerfile: the whole network in one container (coordinator, relay and
+# Dockerfile (repo root): the whole network in one container (coordinator, relay and
 # local providers), for hosting on Railway. Build context = the repo root.
 # Postgres is NOT in here: use Railway's Postgres service (guides/deploy_railway.md).
 FROM golang:1.26-bookworm
