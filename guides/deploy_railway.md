@@ -84,6 +84,16 @@ is not reachable from outside. The `verifyreceipt`, `arkivcheck` and `chain_esca
 need the database and the coordinator process, so run those from a laptop only on a laptop-hosted
 network.
 
+## If a deploy fails
+
+| The log says | What to do |
+| --- | --- |
+| `No public domain yet` or `No TCP proxy yet` | Do step 3 (Settings > Networking), then **Redeploy**. Expected on the first try. |
+| `Cannot reach Postgres` | Re-check the four `PG...` variables in step 2. The database service must be named exactly `Postgres`. |
+| The build cannot find a Dockerfile | In **Settings > Build**, set the Dockerfile path to `deployments/railway/Dockerfile`. |
+| `Create container` fails with "The executable `npm` could not be found" | A wrong start command is saved in the dashboard. In **Settings > Deploy**, clear **Custom Start Command** (`railway.json` already sets the right one: `bash deployments/railway/start.sh`), then redeploy. |
+| `Permission denied` on a `.sh` file during the build | A script lost its runnable flag in git (it happens when it is committed from Windows). Run `git update-index --chmod=+x <file>` and commit. |
+
 ## Things to know
 
 - **Every restart resets the network.** The container's disk is wiped and `up.sh` recreates the

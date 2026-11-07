@@ -5,6 +5,7 @@
     "dockerfilePath": "deployments/railway/Dockerfile"
   },
   "deploy": {
+    "startCommand": "bash deployments/railway/start.sh",
     "healthcheckPath": "/api/v1/time",
     "healthcheckTimeout": 900,
     "restartPolicyType": "ON_FAILURE",
