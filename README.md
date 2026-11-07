@@ -225,9 +225,16 @@ It starts Postgres, the relay, two free public tunnels (no account), the coordin
 providers, then opens two browser tabs:
 
 - **The big screen** (`/join/screen`): a QR code for phones and the address for laptops.
-- **Your join desk** (`/join/desk`): when someone registers, their 6-digit code shows up here
-  the moment it is sent. Read it to them; it works once, for 10 minutes. The desk also counts
-  devices online. It is locked with the admin key the script prints (the tab opens unlocked).
+- **Your join desk** (`/join/desk`), locked with the admin key the script prints (the tab opens
+  unlocked). Three tabs:
+  - **Join codes**: when someone registers, their 6-digit code shows up here the moment it is
+    sent. Read it to them; it works once, for 10 minutes. The desk also counts devices online.
+  - **Store a file**: a data owner built into the desk. Type a phone number once, then drop a
+    file (up to 25 MB) to store it, download it back, see which devices hold its pieces, or delete
+    it. No terminal: the file is still encrypted and split on your laptop, exactly as
+    `cmd/client` does it. Its keys stay in your temp folder (`VYOMANAUT_DESK_OWNER_DIR` to move them).
+  - **On chain**: the Whitechain Sepolia contracts and the Arkiv (Rabdi) records, each linked to
+    its explorer, and this network's latest deposits, payouts, audit anchors and Arkiv entities.
 
 Your network is invite-only: nobody gets in without a code from your desk.
 
@@ -239,7 +246,8 @@ Your network is invite-only: nobody gets in without a code from your desk.
 | `-Stop` / `--stop` | Stops everything. |
 
 On Windows no `psql` is needed: the script runs it inside the Postgres container. The app and
-provider downloads come from your `dist/` folder (`scriptseleaseuild_release.ps1`), or from
+provider downloads come from your `dist/` folder (`scripts
+eleaseuild_release.ps1`), or from
 our GitHub release when `dist/` is empty.
 
 Sections 4.1 to 4.7 explain each piece, for running them yourself or on a cloud VM.

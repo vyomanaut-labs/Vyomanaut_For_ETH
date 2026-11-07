@@ -3,15 +3,16 @@
 <meta name="robots" content="noindex">
 <title>Join desk</title>{{template "style"}}
 <style>
-main{max-width:900px}
+main{max-width:980px}
 .row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:14px 16px;border:1px solid var(--line);border-radius:14px;margin:10px 0;background:var(--card)}
 .code{font-family:ui-monospace,Consolas,monospace;font-size:2.4rem;font-weight:800;letter-spacing:.18em;color:var(--accent)}
 .phone{font-size:1.1rem;font-weight:600}
 .state{font-size:.85rem;padding:3px 10px;border-radius:99px;display:inline-block;margin-top:4px}
-.waiting{background:#2a3566;color:var(--text)}
-.joined{background:#123d33;color:var(--accent)}
-.expired{background:#3a2424;color:var(--bad)}
-.row.done .code{color:var(--dim);font-size:1.6rem}
+.waiting,.uploading{background:#2a3566;color:var(--text)}
+.joined,.done,.live{background:#123d33;color:var(--accent)}
+.expired,.failed{background:#3a2424;color:var(--bad)}
+.ref{background:#3a3424;color:#f3d27a}
+.row.done-row .code{color:var(--dim);font-size:1.6rem}
 .top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
 .stats{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 4px}
 .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;min-width:120px}
@@ -19,7 +20,36 @@ main{max-width:900px}
 .stat span{color:var(--dim);font-size:.85rem}
 input{width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:#050816;color:var(--text);font:inherit}
 .err{color:var(--bad)}
+.ok{color:var(--accent)}
 a{color:var(--accent2)}
+.tabs{display:flex;gap:6px;margin:18px 0 6px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.tab{background:none;border:0;color:var(--dim);font:inherit;font-weight:600;padding:10px 14px;border-bottom:3px solid transparent;cursor:pointer}
+.tab.on{color:var(--text);border-bottom-color:var(--accent)}
+.badge{font-size:.75rem;background:var(--accent);color:#04121a;border-radius:99px;padding:1px 7px;margin-left:6px}
+.drop{display:block;border:2px dashed var(--line);border-radius:14px;padding:28px;text-align:center;cursor:pointer;margin:12px 0}
+.drop.over{border-color:var(--accent);background:#0b1d2a}
+table{width:100%;border-collapse:collapse;margin:8px 0}
+th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--dim);font-weight:600;font-size:.85rem}
+td.nowrap{white-space:nowrap}
+.mini{font-size:.85rem;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:#0c1430;color:var(--text);cursor:pointer;margin:2px 4px 2px 0}
+.mini:hover{border-color:var(--accent)}
+.mini.danger{color:var(--bad)}
+.mono{font-family:ui-monospace,Consolas,monospace;font-size:.85rem;word-break:break-all}
+.pieces{margin:6px 0 0;padding:10px;border:1px solid var(--line);border-radius:10px;background:#070c22}
+.chain{border:1px solid var(--line);border-radius:14px;padding:16px;margin:12px 0;background:var(--card)}
+.chain h3{margin:0 0 4px}
+.links{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px;margin-top:10px}
+.link{border:1px solid var(--line);border-radius:10px;padding:10px 12px;text-decoration:none;color:var(--text);display:block}
+.link:hover{border-color:var(--accent)}
+.link b{display:block;color:var(--accent2)}
+.link span{color:var(--dim);font-size:.85rem}
+.ev{display:grid;grid-template-columns:110px 1fr auto;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.tag{font-size:.75rem;border-radius:99px;padding:2px 8px;text-align:center}
+.tag.whitechain{background:#1d2a55}
+.tag.arkiv{background:#36204d}
+code.q{display:block;padding:10px;border-radius:8px;background:#050816;margin-top:8px}
+@media (max-width:600px){.ev{grid-template-columns:1fr}.code{font-size:1.8rem}}
 </style></head>
 <body><main>
 <div class="top">
@@ -37,48 +67,124 @@ a{color:var(--accent2)}
 <section id="desk" class="hidden">
   <div class="stats">
     <div class="stat"><b id="n-online">–</b><span>devices online</span></div>
+    <div class="stat"><b id="n-active">–</b><span>storing data (active)</span></div>
     <div class="stat"><b id="n-total">–</b><span>devices joined</span></div>
     <div class="stat"><b id="n-waiting">–</b><span>waiting for a code</span></div>
   </div>
-  <p class="hint">When someone taps Register, their code appears here. Read it to them. It works once, for 10 minutes.</p>
-  <div id="list"></div>
-  <p id="empty" class="hint hidden" style="text-align:center;padding:30px">No one is waiting. Codes appear here the moment someone registers.</p>
+
+  <nav class="tabs">
+    <button class="tab on" data-tab="codes">Join codes<span id="b-waiting" class="badge hidden"></span></button>
+    <button class="tab" data-tab="files">Store a file</button>
+    <button class="tab" data-tab="chain">On chain</button>
+  </nav>
+
+  <!-- Join codes -->
+  <div id="t-codes">
+    <p class="hint">When someone taps Register, their code appears here. Read it to them. It works once, for 10 minutes.</p>
+    <div id="list"></div>
+    <p id="empty" class="hint hidden" style="text-align:center;padding:30px">No one is waiting. Codes appear here the moment someone registers.</p>
+  </div>
+
+  <!-- Store a file -->
+  <div id="t-files" class="hidden">
+    <div id="owner-off" class="card hidden"><p id="owner-off-text" class="hint"></p></div>
+
+    <div id="owner-setup" class="card hidden">
+      <h2>Set up the desk's data owner</h2>
+      <p class="hint">This makes one data owner account that belongs to this desk, so you can store files from this browser. Its codes are read automatically. Use a phone number that no provider on this network uses.</p>
+      <form id="setup-form" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        <input id="owner-phone" placeholder="+91 98765 43210" style="flex:1;min-width:200px" autocomplete="off">
+        <button class="btn" id="setup-btn">Set up</button>
+      </form>
+      <p id="setup-msg" class="hint"></p>
+    </div>
+
+    <div id="owner-ready" class="hidden">
+      <div class="stats">
+        <div class="stat"><b id="o-balance">–</b><span>credit available</span></div>
+        <div class="stat"><b id="o-files">–</b><span>files stored</span></div>
+        <div class="stat"><b id="o-repairs">–</b><span>repairs in the queue</span></div>
+      </div>
+      <p class="hint">Data owner <span id="o-phone"></span> · <span class="mono" id="o-id"></span>
+        · <button class="mini" id="deposit-btn">Add ₹10,000 demo credit</button></p>
+
+      <label class="drop" id="drop">
+        <input type="file" id="file-input" class="hidden">
+        <b>Drop a file here, or click to choose one</b>
+        <div class="hint">Up to <span id="max-mb">25</span> MB. It is encrypted and split on this machine; the pieces go straight to the providers.</div>
+      </label>
+      <p id="upload-msg" class="hint"></p>
+      <div id="jobs"></div>
+
+      <h2 style="margin-top:22px">Stored files</h2>
+      <table><thead><tr><th>Name</th><th>Size</th><th>Stored</th><th>Health</th><th></th></tr></thead><tbody id="files"></tbody></table>
+      <p id="files-empty" class="hint hidden">Nothing stored yet.</p>
+      <p class="hint">Try the classic demo: store a file, stop one provider (it departs after 10 minutes offline), watch the repair queue, then download the file again.</p>
+    </div>
+    <p id="owner-err" class="err"></p>
+  </div>
+
+  <!-- On chain -->
+  <div id="t-chain" class="hidden">
+    <p class="hint">Everything this network does on chain, in one place. Each link opens the public explorer.</p>
+    <div id="chains"></div>
+    <h2 style="margin-top:22px">Latest transactions from this network</h2>
+    <div id="events"></div>
+    <p id="events-empty" class="hint hidden">No transactions yet. Deposits, payout periods and audit anchors appear here as they happen (only when the host runs with chains on).</p>
+  </div>
+
   <p id="desk-err" class="err"></p>
 </section>
 </main>
 <script>
 (function(){
   var KEY_NAME = "vyomanaut-desk-key";
+  var mem = "";
   function load(){ try { return localStorage.getItem(KEY_NAME) || ""; } catch (e) { return mem; } }
   function save(k){ mem = k; try { if (k) localStorage.setItem(KEY_NAME, k); else localStorage.removeItem(KEY_NAME); } catch (e) {} }
-  var mem = "";
   // The host script opens /join/desk#key=...: take it, then wipe it from the address bar.
   var m = location.hash.match(/key=([0-9a-fA-F]+)/);
   if (m) { save(m[1]); history.replaceState(null, "", location.pathname); }
-  var key = load(), timer = null;
+  var key = load(), timer = null, tab = "codes", providers = {}, lastFilesAt = 0, lastChainAt = 0;
 
-  function show(id){ ["login","desk"].forEach(function(s){ document.getElementById(s).className = s === id ? "" : "hidden"; }); if (id === "login") document.getElementById("login").className = "card"; }
+  function $(id){ return document.getElementById(id); }
+  function show(id){ ["login","desk"].forEach(function(s){ $(s).className = s === id ? "" : "hidden"; }); if (id === "login") $("login").className = "card"; }
   function mask(p){ return p.length > 6 ? p.slice(0, 3) + " ••• " + p.slice(-4) : p; }
-  function ago(t){ var s = Math.max(0, Math.round((Date.now() - new Date(t)) / 1000)); return s < 60 ? s + "s ago" : Math.floor(s / 60) + " min ago"; }
+  function ago(t){ var s = Math.max(0, Math.round((Date.now() - new Date(t)) / 1000)); return s < 60 ? s + "s ago" : s < 3600 ? Math.floor(s / 60) + " min ago" : Math.floor(s / 3600) + " h ago"; }
   function left(t){ var s = Math.round((new Date(t) - Date.now()) / 1000); return s <= 0 ? "" : " · " + Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0") + " left"; }
   function el(tag, cls, text){ var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function size(b){ return b < 1024 ? b + " B" : b < 1048576 ? (b / 1024).toFixed(1) + " KB" : (b / 1048576).toFixed(1) + " MB"; }
+  function rupees(p){ return "₹" + (p / 100).toLocaleString("en-IN", {maximumFractionDigits: 2}); }
+  function short(s){ return s && s.length > 14 ? s.slice(0, 8) + "…" + s.slice(-4) : s; }
 
-  function get(path){
-    return fetch(path, {headers: {"X-Admin-API-Key": key}, cache: "no-store"}).then(function(r){
+  function call(method, path, body, isForm){
+    var opt = {method: method, headers: {"X-Admin-API-Key": key}, cache: "no-store"};
+    if (body !== undefined) { if (isForm) opt.body = body; else { opt.body = JSON.stringify(body); opt.headers["Content-Type"] = "application/json"; } }
+    return fetch(path, opt).then(function(r){
       if (r.status === 401) throw new Error("auth");
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      return r.json();
+      return r.json().catch(function(){ return {}; }).then(function(d){
+        if (!r.ok) { var e = new Error(d.error || ("HTTP " + r.status)); e.data = d; e.status = r.status; throw e; }
+        return d;
+      });
     });
   }
+  function get(path){ return call("GET", path); }
 
-  function tick(){
-    get("/join/desk/requests").then(function(d){
-      document.getElementById("desk-err").textContent = d.enabled ? "" : "Join codes are shown only when the coordinator runs in demo mode.";
-      var list = document.getElementById("list"); list.textContent = "";
+  // ── tabs ─────────────────────────────────────────────────────────────
+  Array.prototype.forEach.call(document.querySelectorAll(".tab"), function(b){
+    b.onclick = function(){ tab = b.getAttribute("data-tab"); Array.prototype.forEach.call(document.querySelectorAll(".tab"), function(x){ x.className = "tab" + (x === b ? " on" : ""); });
+      ["codes","files","chain"].forEach(function(t){ $("t-" + t).className = t === tab ? "" : "hidden"; }); lastFilesAt = 0; lastChainAt = 0; tick(); };
+  });
+
+  // ── join codes + counts ──────────────────────────────────────────────
+  function codes(){
+    return get("/join/desk/requests").then(function(d){
+      $("desk-err").textContent = d.enabled ? "" : "Join codes are shown only when the coordinator runs in demo mode.";
+      var list = $("list"); list.textContent = "";
       var waiting = 0;
       d.requests.forEach(function(r){
         if (r.state === "waiting") waiting++;
-        var row = el("div", "row" + (r.state === "waiting" ? "" : " done"));
+        var row = el("div", "row" + (r.state === "waiting" ? "" : " done-row"));
         var a = el("div");
         a.appendChild(el("div", "phone", mask(r.phone)));
         var label = r.state === "waiting" ? "waiting" + left(r.expires_at) : r.state === "joined" ? "joined ✓" : "expired, ask them to tap Register again";
@@ -88,25 +194,188 @@ a{color:var(--accent2)}
         row.appendChild(el("div", "code", r.code));
         list.appendChild(row);
       });
-      document.getElementById("empty").className = d.requests.length ? "hint hidden" : "hint";
-      document.getElementById("n-waiting").textContent = waiting;
-    }).catch(fail);
-    get("/api/v1/admin/providers?limit=200").then(function(d){
-      var ps = d.providers || [], online = 0, total = 0;
-      ps.forEach(function(p){ if (p.status === "DEPARTED") return; total++; if (p.last_heartbeat_ts && Date.now() - new Date(p.last_heartbeat_ts) < 120000) online++; });
-      document.getElementById("n-online").textContent = online;
-      document.getElementById("n-total").textContent = total;
+      $("empty").className = d.requests.length ? "hint hidden" : "hint";
+      $("n-waiting").textContent = waiting;
+      var b = $("b-waiting"); b.textContent = waiting; b.className = waiting ? "badge" : "badge hidden";
+    });
+  }
+  function counts(){
+    return get("/api/v1/admin/providers?limit=200").then(function(d){
+      var ps = d.providers || [], online = 0, total = 0, active = 0; providers = {};
+      ps.forEach(function(p){ providers[p.provider_id] = p; if (p.status === "DEPARTED") return; total++; if (p.status === "ACTIVE") active++; if (p.last_heartbeat_ts && Date.now() - new Date(p.last_heartbeat_ts) < 120000) online++; });
+      $("n-online").textContent = online; $("n-active").textContent = active; $("n-total").textContent = total;
     }).catch(function(){});
   }
+
+  // ── data owner ───────────────────────────────────────────────────────
+  var setupBusy = false;
+  function owner(){
+    return get("/join/desk/owner").then(function(d){ renderOwner(d); }).catch(function(e){
+      if (e.message === "auth") throw e;
+      if (e.status === 404) { ownerView("off"); $("owner-off-text").textContent = (e.data && e.data.error) || "No built-in data owner on this coordinator."; return; }
+      $("owner-err").textContent = e.message;
+    });
+  }
+  function ownerView(v){ ["off","setup","ready"].forEach(function(x){ $("owner-" + x).className = (x === v ? "" : "hidden") + (x === "ready" ? "" : " card"); }); }
+  function renderOwner(d){
+    var s = d.status || {};
+    $("owner-err").textContent = s.error || "";
+    if (!s.ready) {
+      ownerView("setup");
+      if (s.phone && !$("owner-phone").value) $("owner-phone").value = s.phone;
+      if (s.setting_up) $("setup-msg").textContent = "Setting up…";
+      return;
+    }
+    ownerView("ready");
+    $("o-balance").textContent = rupees(s.available_paise);
+    $("o-phone").textContent = mask(s.phone);
+    $("o-id").textContent = short(s.owner_id);
+    $("max-mb").textContent = Math.round(s.max_file_bytes / 1048576);
+    renderJobs(d.jobs || []);
+    var busy = (d.jobs || []).some(function(j){ return j.state === "uploading"; });
+    if (busy || Date.now() - lastFilesAt > 10000) { lastFilesAt = Date.now(); files(); }
+    get("/api/v1/admin/repair/queue").then(function(q){ $("o-repairs").textContent = (q.jobs || []).length; }).catch(function(){ $("o-repairs").textContent = "–"; });
+  }
+  function renderJobs(jobs){
+    var box = $("jobs"); box.textContent = "";
+    jobs.slice(0, 5).forEach(function(j){
+      var row = el("div", "row");
+      var a = el("div");
+      a.appendChild(el("div", "phone", j.name + " · " + size(j.size_bytes)));
+      var label = j.state === "uploading" ? "encrypting and sending pieces… " + ago(j.started_at).replace(" ago", "") : j.state === "done" ? "stored ✓" : "failed";
+      a.appendChild(el("span", "state " + j.state, label));
+      if (j.error) a.appendChild(el("div", "err", j.error));
+      row.appendChild(a);
+      if (j.finished_at) row.appendChild(el("div", "hint", ((new Date(j.finished_at) - new Date(j.started_at)) / 1000).toFixed(1) + " s"));
+      box.appendChild(row);
+    });
+  }
+  function files(){
+    return get("/join/desk/owner/files").then(function(d){
+      var tb = $("files"); tb.textContent = "";
+      $("o-files").textContent = d.files.length;
+      $("files-empty").className = d.files.length ? "hint hidden" : "hint";
+      d.files.forEach(function(f){
+        var tr = el("tr");
+        var name = el("td"); name.appendChild(el("div", null, f.name)); name.appendChild(el("div", "mono hint", f.file_id)); tr.appendChild(name);
+        tr.appendChild(el("td", "nowrap", size(f.size_bytes)));
+        tr.appendChild(el("td", "nowrap", ago(f.uploaded_at)));
+        tr.appendChild(el("td", null, f.availability));
+        var act = el("td");
+        var dl = el("button", "mini", "Download"); dl.onclick = function(){ download(f, dl); };
+        var pc = el("button", "mini", "Where are the pieces?"); var box = el("div", "pieces hidden");
+        pc.onclick = function(){ pieces(f, box); };
+        var rm = el("button", "mini danger", "Delete"); rm.onclick = function(){ if (confirm("Delete " + f.name + " from the network? This cannot be undone.")) call("DELETE", "/join/desk/owner/files/" + f.file_id).then(files).catch(function(e){ $("owner-err").textContent = e.message; }); };
+        act.appendChild(dl); act.appendChild(pc); act.appendChild(rm); act.appendChild(box);
+        tr.appendChild(act);
+        tb.appendChild(tr);
+      });
+    }).catch(function(e){ if (e.message !== "auth") $("owner-err").textContent = e.message; });
+  }
+  function download(f, btn){
+    btn.disabled = true; btn.textContent = "Fetching pieces…";
+    var t0 = performance.now();
+    fetch("/join/desk/owner/files/" + f.file_id, {headers: {"X-Admin-API-Key": key}, cache: "no-store"}).then(function(r){
+      if (!r.ok) return r.json().then(function(d){ throw new Error(d.error || ("HTTP " + r.status)); });
+      return r.blob();
+    }).then(function(b){
+      var a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = f.name; document.body.appendChild(a); a.click();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+      btn.textContent = "Got it in " + ((performance.now() - t0) / 1000).toFixed(1) + " s";
+    }).catch(function(e){ btn.textContent = "Download"; $("owner-err").textContent = "Download failed: " + e.message; })
+      .then(function(){ btn.disabled = false; });
+  }
+  function pieces(f, box){
+    if (box.className.indexOf("hidden") < 0) { box.className = "pieces hidden"; return; }
+    box.className = "pieces"; box.textContent = "Loading…";
+    get("/api/v1/admin/file/" + f.file_id + "/shards").then(function(d){
+      var by = {};
+      (d.shards || []).forEach(function(s){ (by[s.provider_id] = by[s.provider_id] || []).push(s); });
+      box.textContent = "";
+      box.appendChild(el("div", "hint", (d.shards || []).length + " pieces on " + Object.keys(by).length + " devices. Any 3 of every 5 pieces rebuild the file."));
+      Object.keys(by).forEach(function(pid){
+        var p = providers[pid] || {};
+        var online = p.last_heartbeat_ts && Date.now() - new Date(p.last_heartbeat_ts) < 120000;
+        var line = el("div", null, "");
+        line.appendChild(el("span", "mono", short(pid) + " "));
+        line.appendChild(el("span", "state " + (p.status === "DEPARTED" ? "failed" : online ? "done" : "waiting"), (p.status || "?") + (online ? " · online" : " · offline")));
+        line.appendChild(el("span", "hint", " " + by[pid].length + " piece" + (by[pid].length > 1 ? "s" : "") + (by[pid][0].asn ? " · " + by[pid][0].asn : "")));
+        box.appendChild(line);
+      });
+    }).catch(function(e){ box.textContent = e.message; });
+  }
+  $("setup-form").onsubmit = function(ev){
+    ev.preventDefault(); if (setupBusy) return; setupBusy = true;
+    $("setup-btn").disabled = true; $("setup-msg").className = "hint"; $("setup-msg").textContent = "Registering, reading the code and adding demo credit…";
+    call("POST", "/join/desk/owner/setup", {phone: $("owner-phone").value}).then(function(d){ $("setup-msg").textContent = ""; renderOwner(d); })
+      .catch(function(e){ $("setup-msg").className = "err"; $("setup-msg").textContent = e.message; })
+      .then(function(){ setupBusy = false; $("setup-btn").disabled = false; });
+  };
+  $("deposit-btn").onclick = function(){
+    var b = this; b.disabled = true;
+    call("POST", "/join/desk/owner/deposit").then(function(){ owner(); }).catch(function(e){ $("owner-err").textContent = e.message; }).then(function(){ b.disabled = false; });
+  };
+  function send(file){
+    if (!file) return;
+    var fd = new FormData(); fd.append("file", file);
+    $("upload-msg").className = "hint"; $("upload-msg").textContent = "Sending " + file.name + " to the desk…";
+    call("POST", "/join/desk/owner/upload", fd, true).then(function(){ $("upload-msg").textContent = ""; owner(); })
+      .catch(function(e){ $("upload-msg").className = "err"; $("upload-msg").textContent = e.message; });
+  }
+  $("file-input").onchange = function(){ send(this.files[0]); this.value = ""; };
+  var drop = $("drop");
+  ["dragenter","dragover"].forEach(function(t){ drop.addEventListener(t, function(e){ e.preventDefault(); drop.className = "drop over"; }); });
+  ["dragleave","drop"].forEach(function(t){ drop.addEventListener(t, function(e){ e.preventDefault(); drop.className = "drop"; }); });
+  drop.addEventListener("drop", function(e){ send(e.dataTransfer.files[0]); });
+
+  // ── on chain ─────────────────────────────────────────────────────────
+  function chain(){
+    return get("/join/desk/chain").then(function(d){
+      var box = $("chains"); box.textContent = "";
+      d.chains.forEach(function(c){
+        var s = el("div", "chain");
+        var h = el("h3", null, c.name + " "); h.appendChild(el("span", "state " + (c.live ? "live" : "ref"), c.live ? "this network writes here" : "reference deployment (chains are off on this network)"));
+        s.appendChild(h);
+        s.appendChild(el("div", "hint", "Chain ID " + c.chain_id));
+        s.appendChild(el("p", null, c.role));
+        var links = el("div", "links");
+        c.links.forEach(function(l){
+          var a = el("a", "link"); a.href = l.url; a.target = "_blank"; a.rel = "noopener";
+          a.appendChild(el("b", null, l.label)); a.appendChild(el("span", null, l.what));
+          if (l.value) a.appendChild(el("div", "mono hint", l.value));
+          links.appendChild(a);
+        });
+        s.appendChild(links);
+        if (c.query) { s.appendChild(el("div", "hint", "Query the audit results yourself on Arkiv:")); s.appendChild(el("code", "q mono", c.query)); }
+        box.appendChild(s);
+      });
+      var ev = $("events"); ev.textContent = "";
+      $("events-empty").className = d.events.length ? "hint hidden" : "hint";
+      d.events.forEach(function(e){
+        var row = el("div", "ev");
+        row.appendChild(el("span", "tag " + e.chain, e.chain === "arkiv" ? "Arkiv" : "Whitechain"));
+        var a = el("div"); a.appendChild(el("b", null, e.title)); a.appendChild(el("div", "hint", (e.detail ? e.detail + " · " : "") + ago(e.at))); row.appendChild(a);
+        var l = el("a", "mini", "View transaction ↗"); l.href = e.tx_url; l.target = "_blank"; l.rel = "noopener"; row.appendChild(l);
+        ev.appendChild(row);
+      });
+    });
+  }
+
+  function tick(){
+    var p = [codes(), counts()];
+    if (tab === "files") p.push(owner());
+    if (tab === "chain" && Date.now() - lastChainAt > 10000) { lastChainAt = Date.now(); p.push(chain()); }
+    Promise.all(p).then(function(){ if ($("desk-err").textContent.indexOf("Cannot reach") === 0) $("desk-err").textContent = ""; }).catch(fail);
+  }
   function fail(e){
-    if (e.message === "auth") { stop(); save(""); key = ""; show("login"); document.getElementById("login-err").textContent = "That key did not work."; }
-    else document.getElementById("desk-err").textContent = "Cannot reach the coordinator (" + e.message + "). Retrying…";
+    if (e.message === "auth") { stop(); save(""); key = ""; show("login"); $("login-err").textContent = "That key did not work."; }
+    else $("desk-err").textContent = "Cannot reach the coordinator (" + e.message + "). Retrying…";
   }
   function start(){ show("desk"); tick(); stop(); timer = setInterval(tick, 2000); }
   function stop(){ if (timer) clearInterval(timer); timer = null; }
 
-  document.getElementById("login-form").onsubmit = function(ev){ ev.preventDefault(); key = document.getElementById("key").value.trim(); save(key); document.getElementById("login-err").textContent = ""; start(); };
-  document.getElementById("lock").onclick = function(ev){ ev.preventDefault(); stop(); save(""); key = ""; show("login"); };
+  $("login-form").onsubmit = function(ev){ ev.preventDefault(); key = $("key").value.trim(); save(key); $("login-err").textContent = ""; start(); };
+  $("lock").onclick = function(ev){ ev.preventDefault(); stop(); save(""); key = ""; show("login"); };
   if (key) start(); else show("login");
 })();
 </script>

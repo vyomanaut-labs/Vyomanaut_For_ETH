@@ -8,6 +8,9 @@
 //	GET /join/qr.png           the QR code of /join
 //	GET /join/desk             the host's join desk (needs the admin key)
 //	GET /join/desk/requests    JSON for the desk (X-Admin-API-Key)
+//	GET /join/desk/chain       the on-chain section: contracts and recent transactions
+//	/join/desk/owner/...       the desk's built-in data owner: set up, credit,
+//	                           upload, list, download, delete (X-Admin-API-Key)
 //	GET /join/download/{name}  the app and provider downloads
 //	GET /join/install.sh       one-line laptop setup, macOS and Linux
 //	GET /join/install.ps1      one-line laptop setup, Windows
@@ -18,7 +21,7 @@
 package joinpage
 
 import (
-	"crypto/subtle"
+	"database/sql"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -83,6 +86,13 @@ type Config struct {
 	AdminAPIKey string
 	// Desk records join codes. nil = the desk shows none.
 	Desk *Desk
+	// Owner is the desk's built-in data owner. nil = the desk has no data
+	// owner panel (not demo mode).
+	Owner DeskOwner
+	// DB is read for the on-chain feed. nil = no feed.
+	DB *sql.DB
+	// Chain is what the on-chain section shows (ChainFromEnv).
+	Chain ChainConfig
 }
 
 // ConfigFromEnv reads the optional VYOMANAUT_PUBLIC_* settings.
@@ -106,6 +116,7 @@ func ConfigFromEnv() Config {
 		ChainAPIURL:  strings.TrimRight(os.Getenv("VYOMANAUT_PUBLIC_CHAIN_API"), "/"),
 		DownloadsDir: os.Getenv("VYOMANAUT_DOWNLOADS_DIR"),
 		ReleaseBase:  strings.TrimRight(os.Getenv("VYOMANAUT_RELEASE_BASE"), "/"),
+		Chain:        ChainFromEnv(),
 	}
 	return cfg
 }
@@ -141,6 +152,14 @@ func Handler(next http.Handler, cfg Config) http.Handler {
 	mux.HandleFunc("GET /join/screen", s.page("screen.html"))
 	mux.HandleFunc("GET /join/desk", s.page("desk.html"))
 	mux.HandleFunc("GET /join/desk/requests", s.deskRequests)
+	mux.HandleFunc("GET /join/desk/chain", s.deskChain)
+	mux.HandleFunc("GET /join/desk/owner", s.owner(s.ownerStatus))
+	mux.HandleFunc("POST /join/desk/owner/setup", s.owner(s.ownerSetup))
+	mux.HandleFunc("POST /join/desk/owner/deposit", s.owner(s.ownerDeposit))
+	mux.HandleFunc("POST /join/desk/owner/upload", s.owner(s.ownerUpload))
+	mux.HandleFunc("GET /join/desk/owner/files", s.owner(s.ownerFiles))
+	mux.HandleFunc("GET /join/desk/owner/files/{id}", s.owner(s.ownerRetrieve))
+	mux.HandleFunc("DELETE /join/desk/owner/files/{id}", s.owner(s.ownerDelete))
 	mux.HandleFunc("GET /join/qr.png", s.qr)
 	mux.HandleFunc("GET /join/download/{name}", s.download)
 	mux.HandleFunc("GET /join/install.sh", s.script("install.sh", "text/x-shellscript; charset=utf-8"))
@@ -232,7 +251,6 @@ func intentLink(in Info) string {
 		"#Intent;scheme=vyomanaut;package=" + AppPackage +
 		";S.browser_fallback_url=" + url.QueryEscape(in.AppDownloadURL) + ";end"
 }
-
 
 func (s *server) infoJSON(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -360,12 +378,7 @@ func psQuote(s string) string {
 }
 
 func (s *server) deskRequests(w http.ResponseWriter, r *http.Request) {
-	key := s.cfg.AdminAPIKey
-	got := r.Header.Get("X-Admin-API-Key")
-	if key == "" || subtle.ConstantTimeCompare([]byte(got), []byte(key)) != 1 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte(`{"error":"wrong admin key"}`))
+	if !s.adminOK(w, r) {
 		return
 	}
 	var reqs []DeskRequest
@@ -375,7 +388,5 @@ func (s *server) deskRequests(w http.ResponseWriter, r *http.Request) {
 	if reqs == nil {
 		reqs = []DeskRequest{}
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
-	_ = json.NewEncoder(w).Encode(map[string]any{"enabled": s.cfg.Desk != nil, "requests": reqs})
+	writeJSON(w, http.StatusOK, map[string]any{"enabled": s.cfg.Desk != nil, "requests": reqs})
 }

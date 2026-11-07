@@ -53,6 +53,7 @@ import (
 	_ "github.com/lib/pq"
 
 	"github.com/vyomanaut-labs/Vyomanaut_V2/internal/api"
+	"github.com/vyomanaut-labs/Vyomanaut_V2/internal/deskowner"
 	"github.com/vyomanaut-labs/Vyomanaut_V2/internal/joinpage"
 	"github.com/vyomanaut-labs/Vyomanaut_V2/internal/audit"
 	"github.com/vyomanaut-labs/Vyomanaut_V2/internal/cluster"
@@ -513,6 +514,12 @@ func runMicroservice(ctx context.Context, cfg startupConfig) (*app, error) {
 	joinCfg.Mode = profile.Mode
 	joinCfg.AdminAPIKey = adminAPIKey
 	joinCfg.Desk = joinDesk
+	joinCfg.DB = db
+	if joinDesk != nil {
+		// The desk's own data owner, so the host can upload from a browser.
+		// It calls this coordinator over loopback like any other client.
+		joinCfg.Owner = deskowner.New(selfURL(cfg.HTTPListenAddr), deskOwnerDir(), profile, joinDesk)
+	}
 	httpServer := &http.Server{Addr: cfg.HTTPListenAddr, Handler: joinpage.Handler(router, joinCfg)}
 	a.httpServer = httpServer
 	go func() {

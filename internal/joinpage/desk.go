@@ -32,8 +32,9 @@ type Desk struct {
 	db   *sql.DB
 	now  func() time.Time
 
-	mu      sync.Mutex
-	entries []deskEntry
+	mu       sync.Mutex
+	entries  []deskEntry
+	ownPhone string // the desk's own data owner; its codes are not listed
 }
 
 type deskEntry struct {
@@ -66,6 +67,39 @@ func (d *Desk) SendOTP(ctx context.Context, phoneNumber, code string) error {
 	return nil
 }
 
+// LatestCode returns the newest code sent to phone at or after since. The
+// desk's own data owner (internal/deskowner) uses it to register and log in
+// without anyone typing a code.
+func (d *Desk) LatestCode(phone string, since time.Time) (string, bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for i := len(d.entries) - 1; i >= 0; i-- {
+		e := d.entries[i]
+		if e.sentAt.Before(since) {
+			break
+		}
+		if e.phone == phone {
+			return e.code, true
+		}
+	}
+	return "", false
+}
+
+// hidden reports whether phone belongs to the desk's own data owner, whose
+// codes the desk uses itself and does not list.
+func (d *Desk) hidden(phone string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.ownPhone != "" && phone == d.ownPhone
+}
+
+// HidePhone stops the desk listing codes for phone (the desk's own owner).
+func (d *Desk) HidePhone(phone string) {
+	d.mu.Lock()
+	d.ownPhone = phone
+	d.mu.Unlock()
+}
+
 // DeskRequest is one row on the join desk.
 type DeskRequest struct {
 	Phone     string    `json:"phone"`
@@ -86,7 +120,7 @@ func (d *Desk) Recent(ctx context.Context) []DeskRequest {
 	out := make([]DeskRequest, 0, len(snapshot))
 	for i := len(snapshot) - 1; i >= 0; i-- {
 		e := snapshot[i]
-		if now.Sub(e.sentAt) > deskShowFor {
+		if now.Sub(e.sentAt) > deskShowFor || d.hidden(e.phone) {
 			continue
 		}
 		r := DeskRequest{Phone: e.phone, Code: e.code, SentAt: e.sentAt.UTC(), ExpiresAt: e.sentAt.Add(codeLifetime).UTC(), State: "waiting"}
