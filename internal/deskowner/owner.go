@@ -44,7 +44,28 @@ import (
 
 // MaxFileBytes is the largest file the desk accepts. The whole file is held in
 // memory while it is encoded, like cmd/client does.
-const MaxFileBytes = 25 << 20
+// BytesPerMB is the size of a megabyte, for limits and messages.
+const BytesPerMB = 1 << 20
+
+// MaxFileBytes is the largest file the desk accepts.
+const MaxFileBytes = 25 * BytesPerMB
+
+// Small named values, so the code reads without unexplained numbers.
+const (
+	passphraseBytes = 32               // random bytes behind the owner's passphrase
+	creditPoll      = 2 * time.Second  // how often to look for the starting credit
+	uploadTimeout   = 15 * time.Minute // one upload, including retries
+	maxNameLen      = 120              // longest file name kept
+	dirMode         = 0o700            // the owner's keys folder: this user only
+	fileMode        = 0o600            // the owner's keys file: this user only
+)
+
+// userError is an error whose text is written for the person at the desk: a full sentence,
+// capitalised, ending in a full stop. Go style (and staticcheck ST1005) asks for lower-case
+// error strings, so these use their own type instead of errors.New.
+type userError string
+
+func (e userError) Error() string { return string(e) }
 
 // DemoCreditPaise is what "Add demo credit" deposits (₹10,000, as in the guides).
 const DemoCreditPaise = 1_000_000
@@ -155,7 +176,7 @@ func (o *Owner) Setup(ctx context.Context, phone string) error {
 		phone = "+91" + phone
 	}
 	if !phonePattern.MatchString(phone) {
-		return fmt.Errorf("Enter the phone as +91 and 10 digits.")
+		return userError("Enter the phone as +91 and 10 digits.")
 	}
 	o.mu.Lock()
 	if o.setup {
@@ -177,15 +198,15 @@ func (o *Owner) Setup(ctx context.Context, phone string) error {
 // code sends a join code to phone and reads it back from the desk.
 func (o *Owner) code(ctx context.Context, phone, purpose string) (string, error) {
 	if o.codes == nil {
-		return "", errors.New("The desk can read join codes only in demo mode.")
+		return "", userError("The desk can read join codes only in demo mode.")
 	}
 	since := o.now().Add(-time.Second)
 	if err := account.SendOTP(ctx, o.baseURL, o.http, phone, purpose); err != nil {
-		return "", fmt.Errorf("Could not send a code: %w", err)
+		return "", userError("Could not send a code: " + err.Error())
 	}
 	code, ok := o.codes.LatestCode(phone, since)
 	if !ok {
-		return "", errors.New("The code did not reach the desk. Is the coordinator in demo mode?")
+		return "", userError("The code did not reach the desk. Is the coordinator in demo mode?")
 	}
 	return code, nil
 }
@@ -197,16 +218,16 @@ func (o *Owner) register(ctx context.Context, phone string) error {
 	}
 	v, err := account.VerifyOTP(ctx, o.baseURL, o.http, phone, code)
 	if err != nil {
-		return fmt.Errorf("The code was not accepted: %w", err)
+		return userError("The code was not accepted: " + err.Error())
 	}
 	if !v.IsNewEntity {
-		return fmt.Errorf("%s is already registered on this network (as a %s) by someone else. Use another number.", phone, roleName(v.Role))
+		return userError(fmt.Sprintf("%s is already registered on this network (as a %s) by someone else. Use another number.", phone, roleName(v.Role)))
 	}
 	reg, err := account.RegisterOwner(ctx, o.baseURL, o.http, v.Token)
 	if err != nil {
-		return fmt.Errorf("Registration failed: %w", err)
+		return userError("Registration failed: " + err.Error())
 	}
-	pass := make([]byte, 32)
+	pass := make([]byte, passphraseBytes)
 	if _, err := rand.Read(pass); err != nil {
 		return err
 	}
@@ -261,7 +282,7 @@ func (o *Owner) waitForCredit(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(2 * time.Second):
+		case <-time.After(creditPoll):
 		}
 	}
 }
@@ -274,12 +295,12 @@ func (o *Owner) login(ctx context.Context, st *state) (string, error) {
 	}
 	v, err := account.VerifyOTP(ctx, o.baseURL, o.http, st.Phone, code)
 	if err != nil {
-		return "", fmt.Errorf("Logging in failed: %w", err)
+		return "", userError("Logging in failed: " + err.Error())
 	}
 	if v.IsNewEntity || v.EntityID != st.OwnerID {
 		// The network was reset (its database wiped): the saved owner is gone.
 		o.forget()
-		return "", errors.New("This network no longer knows the saved data owner (its database was reset). Set it up again.")
+		return "", userError("This network no longer knows the saved data owner (its database was reset). Set it up again.")
 	}
 	o.mu.Lock()
 	if o.st != nil {
@@ -298,7 +319,7 @@ func (o *Owner) forget() {
 }
 
 // ErrNotSetUp means Setup has not run.
-var ErrNotSetUp = errors.New("Set up the data owner first.")
+var ErrNotSetUp error = userError("Set up the data owner first.")
 
 // token returns a current token, logging in again when the saved one is old.
 func (o *Owner) token(ctx context.Context) (string, error) {
@@ -485,10 +506,10 @@ type Job struct {
 // reports how it went.
 func (o *Owner) StartUpload(name string, data []byte) (Job, error) {
 	if len(data) == 0 {
-		return Job{}, errors.New("The file is empty.")
+		return Job{}, userError("The file is empty.")
 	}
 	if len(data) > MaxFileBytes {
-		return Job{}, fmt.Errorf("The file is larger than %d MB.", MaxFileBytes>>20)
+		return Job{}, userError(fmt.Sprintf("The file is larger than %d MB.", MaxFileBytes/BytesPerMB))
 	}
 	if _, _, _, err := o.keys(); err != nil {
 		return Job{}, err
@@ -504,7 +525,7 @@ func (o *Owner) StartUpload(name string, data []byte) (Job, error) {
 	o.mu.Unlock()
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), uploadTimeout)
 		defer cancel()
 		fileID, err := o.upload(ctx, data)
 		o.mu.Lock()
@@ -580,8 +601,8 @@ func cleanName(name string) string {
 	if name == "" || name == "." {
 		name = "file"
 	}
-	if len(name) > 120 {
-		name = name[:120]
+	if len(name) > maxNameLen {
+		name = name[:maxNameLen]
 	}
 	return name
 }
@@ -607,7 +628,7 @@ func (o *Owner) load() (*state, error) {
 
 // save writes st. The caller may hold o.mu.
 func (o *Owner) save(st *state) error {
-	if err := os.MkdirAll(o.dir, 0o700); err != nil {
+	if err := os.MkdirAll(o.dir, dirMode); err != nil {
 		return err
 	}
 	b, err := json.MarshalIndent(st, "", "  ")
@@ -615,7 +636,7 @@ func (o *Owner) save(st *state) error {
 		return err
 	}
 	tmp := filepath.Join(o.dir, stateFile+".tmp")
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+	if err := os.WriteFile(tmp, b, fileMode); err != nil {
 		return err
 	}
 	return os.Rename(tmp, filepath.Join(o.dir, stateFile))

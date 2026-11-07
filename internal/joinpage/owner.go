@@ -35,6 +35,12 @@ const ownerTimeout = 45 * time.Second
 // setupTimeout bounds the one-off owner setup, which waits for the starting credit.
 const setupTimeout = 90 * time.Second
 
+// maxSetupBody bounds the small JSON body of the setup request.
+const maxSetupBody = 4 << 10
+
+// multipartSlack is the room a file upload's form framing may take beyond the file itself.
+const multipartSlack = 1 << 20
+
 const retrieveTimeout = 5 * time.Minute
 
 func (s *server) adminOK(w http.ResponseWriter, r *http.Request) bool {
@@ -91,7 +97,7 @@ func (s *server) ownerSetup(w http.ResponseWriter, r *http.Request, o DeskOwner)
 	var body struct {
 		Phone string `json:"phone"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&body); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxSetupBody)).Decode(&body); err != nil {
 		writeErr(w, http.StatusBadRequest, errors.New("send {\"phone\": \"+91...\"}"))
 		return
 	}
@@ -139,13 +145,13 @@ func (s *server) ownerDeposit(w http.ResponseWriter, r *http.Request, o DeskOwne
 }
 
 func (s *server) ownerUpload(w http.ResponseWriter, r *http.Request, o DeskOwner) {
-	r.Body = http.MaxBytesReader(w, r.Body, deskowner.MaxFileBytes+(1<<20))
+	r.Body = http.MaxBytesReader(w, r.Body, deskowner.MaxFileBytes+multipartSlack)
 	f, hdr, err := r.FormFile("file")
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, fmt.Errorf("Choose a file up to %d MB.", deskowner.MaxFileBytes>>20))
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("Choose a file up to %d MB.", deskowner.MaxFileBytes/deskowner.BytesPerMB)})
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	data, err := io.ReadAll(io.LimitReader(f, deskowner.MaxFileBytes+1))
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)

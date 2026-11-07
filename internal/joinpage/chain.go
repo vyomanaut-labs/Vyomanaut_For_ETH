@@ -163,7 +163,7 @@ func (c ChainConfig) chainEvents(ctx context.Context, db *sql.DB) []ChainEvent {
 		if err != nil {
 			return
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			if e, ok := row(rows); ok {
 				out = append(out, e)

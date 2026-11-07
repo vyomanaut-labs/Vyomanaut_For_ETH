@@ -63,7 +63,7 @@ func do(t *testing.T, method, url, ctype string, body io.Reader, withKey bool) (
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	b, _ := io.ReadAll(resp.Body)
 	return resp.StatusCode, string(b), resp.Header
 }

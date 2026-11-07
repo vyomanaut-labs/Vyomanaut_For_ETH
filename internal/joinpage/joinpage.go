@@ -52,6 +52,9 @@ var (
 // GitHub release.
 const AppFile = "vyomanaut-provider-android.apk"
 
+// qrSize is the width and height, in pixels, of the join QR code image.
+const qrSize = 512
+
 // AppPackage is the Android app's package name, used by the "open in app" link.
 const AppPackage = "org.vyomanaut.provider"
 
@@ -294,7 +297,7 @@ func (s *server) page(name string) http.HandlerFunc {
 }
 
 func (s *server) qr(w http.ResponseWriter, r *http.Request) {
-	png, err := qrcode.Encode(s.networkInfo(r).JoinURL, qrcode.Medium, 512)
+	png, err := qrcode.Encode(s.networkInfo(r).JoinURL, qrcode.Medium, qrSize)
 	if err != nil {
 		http.Error(w, "qr error", http.StatusInternalServerError)
 		return
