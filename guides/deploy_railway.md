@@ -92,6 +92,9 @@ network.
 | `Cannot reach Postgres` | Re-check the four `PG...` variables in step 2. The database service must be named exactly `Postgres`. |
 | The build cannot find a Dockerfile | In **Settings > Build**, set the Dockerfile path to `Dockerfile`. |
 | `Create container` fails with "The executable `npm` could not be found" | A wrong start command is saved in the dashboard. In **Settings > Deploy**, clear **Custom Start Command** (`railway.json` already sets the right one: `bash deployments/railway/start.sh`), then redeploy. |
+| `microservice never became reachable` | The lines just below it show the coordinator's own error. If it says the admin key is not valid hex, fix `VYOMANAUT_DEMO_ADMIN_KEY`: exactly 64 characters, only 0-9 and a-f, no spaces or quotes (or delete the variable). |
+| `WARNING: VYOMANAUT_DEMO_ADMIN_KEY is not 64 hex characters` | Your key was ignored and a temporary one is printed at the end of the log. Fix the variable and redeploy to get a stable key. |
+| Not sure which version is running | The first log line is `[railway] build: commit ...`. Compare it with the newest commit on GitHub. If it is older, use **Ctrl+K > Deploy Latest Commit** (Redeploy rebuilds the old commit). |
 | `Permission denied` on a `.sh` file during the build | A script lost its runnable flag in git (it happens when it is committed from Windows). Run `git update-index --chmod=+x <file>` and commit. |
 
 ## Things to know

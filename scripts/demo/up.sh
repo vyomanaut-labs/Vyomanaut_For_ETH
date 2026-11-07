@@ -262,14 +262,26 @@ fi
 MICROSERVICE_URL="http://$LAN_IP:$PORT"
 
 log "waiting for the microservice to answer /api/v1/admin/readiness"
-for _ in $(seq 1 60); do
+# VYOMANAUT_READY_WAIT: seconds to wait (default 60). A small shared-CPU server may need longer.
+for _ in $(seq 1 "${VYOMANAUT_READY_WAIT:-60}"); do
   if curl -sf -o /dev/null "http://127.0.0.1:$PORT/api/v1/admin/readiness" -H "X-Admin-API-Key: $ADMIN_API_KEY"; then
+    break
+  fi
+  # No point waiting if the coordinator has already exited: its log says why.
+  if ! kill -0 "$MS_PID" 2>/dev/null; then
     break
   fi
   sleep 1
 done
 if ! curl -sf -o /dev/null "http://127.0.0.1:$PORT/api/v1/admin/readiness" -H "X-Admin-API-Key: $ADMIN_API_KEY"; then
   echo "[up.sh] microservice never became reachable — see $LOG_DIR/microservice.log" >&2
+  if kill -0 "$MS_PID" 2>/dev/null; then
+    echo "[up.sh] (the coordinator is still running, only slow to answer)" >&2
+  else
+    echo "[up.sh] (the coordinator exited)" >&2
+  fi
+  echo "[up.sh] last lines of the coordinator's log (64-character keys hidden):" >&2
+  tail -n 40 "$LOG_DIR/microservice.log" 2>/dev/null | sed -E 's/[0-9a-fA-F]{64}/<hidden>/g' >&2 || true
   exit 1
 fi
 if [[ "$EXPOSE_METRICS" == "1" ]]; then

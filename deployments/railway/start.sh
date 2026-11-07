@@ -19,6 +19,9 @@ cd /app
 log() { printf '[railway] %s\n' "$*"; }
 die() { printf '[railway] ERROR: %s\n' "$*" >&2; exit 1; }
 
+COMMIT_SHA="${RAILWAY_GIT_COMMIT_SHA:-unknown}"
+log "build: commit ${COMMIT_SHA:0:7} (${RAILWAY_GIT_COMMIT_MESSAGE:-no commit message}) "
+
 PORT="${PORT:-8080}"
 PROVIDERS="${VYOMANAUT_PROVIDERS:-5}"
 RELAY_PORT=30300
@@ -36,6 +39,14 @@ PGADMINUSER="${PGUSER:-postgres}"; PGADMINPASSWORD="$PGPASSWORD"; PGPORT="${PGPO
 PUBLIC_URL="https://$RAILWAY_PUBLIC_DOMAIN"
 PUBLIC_RELAY="$RAILWAY_TCP_PROXY_DOMAIN:$RAILWAY_TCP_PROXY_PORT"
 
+# The coordinator refuses to start unless the admin key is exactly 64 hex characters (0-9, a-f).
+# A mistyped or truncated paste would otherwise stop the whole network, so warn and use a
+# temporary key instead (it is printed once below). The bad value itself is never printed.
+if [[ -n "${VYOMANAUT_DEMO_ADMIN_KEY:-}" && ! "$VYOMANAUT_DEMO_ADMIN_KEY" =~ ^[0-9a-fA-F]{64}$ ]]; then
+  log "WARNING: VYOMANAUT_DEMO_ADMIN_KEY is not 64 hex characters (it has ${#VYOMANAUT_DEMO_ADMIN_KEY} characters, or some are not 0-9 / a-f). Ignoring it and using a temporary key for this start."
+  unset VYOMANAUT_DEMO_ADMIN_KEY
+fi
+
 log "waiting for Postgres at $PGHOST:$PGPORT"
 for _ in $(seq 1 60); do
   PGPASSWORD="$PGADMINPASSWORD" psql -h "$PGHOST" -p "$PGPORT" -U "$PGADMINUSER" -d postgres -Atc "select 1" >/dev/null 2>&1 && break
@@ -43,6 +54,19 @@ for _ in $(seq 1 60); do
 done
 PGPASSWORD="$PGADMINPASSWORD" psql -h "$PGHOST" -p "$PGPORT" -U "$PGADMINUSER" -d postgres -Atc "select 1" >/dev/null \
   || die "Cannot reach Postgres. Check the PG* variables."
+
+# Use SSL to the database when the server has it (the coordinator defaults to none).
+if [[ -z "${PGSSLMODE:-}" ]]; then
+  if [[ "$(PGPASSWORD="$PGADMINPASSWORD" psql -h "$PGHOST" -p "$PGPORT" -U "$PGADMINUSER" -d postgres -Atc 'show ssl' 2>/dev/null)" == "on" ]]; then
+    export PGSSLMODE=require
+  else
+    export PGSSLMODE=disable
+  fi
+fi
+log "database connection: sslmode=$PGSSLMODE"
+
+# A small shared-CPU container can take a while to start the coordinator.
+export VYOMANAUT_READY_WAIT="${VYOMANAUT_READY_WAIT:-240}"
 
 # The schema must be owned by a role called vyomanaut_migrator (up.sh and the migrations expect it).
 # Make it from the admin user with fresh random passwords on every start; nothing is stored.
